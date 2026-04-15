@@ -1,10 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import logo from '../assets/logo.png'; 
-
-// === IMPORTACIONES DE FIRESTORE ===
 import { db } from '../firebase';
-import { collection, query, where, getDocs } from 'firebase/firestore';
+import { collection, query, where, getDocs, doc, updateDoc } from 'firebase/firestore';
 
 const DetalleAlumno = () => {
   const location = useLocation();
@@ -19,7 +17,15 @@ const DetalleAlumno = () => {
   const [tabActiva, setTabActiva] = useState('general');
   const [filtroMesAsistencia, setFiltroMesAsistencia] = useState('Todos');
 
-  // === 1. CARGA DE DATOS SEGURA ===
+  const [editandoMedico, setEditandoMedico] = useState(false);
+  const [guardandoMedico, setGuardandoMedico] = useState(false);
+  const [datosMedicos, setDatosMedicos] = useState({
+    tipoSangre: 'No especificado',
+    alergias: '',
+    lesionesPrevias: '',
+    seguro: ''
+  });
+
   useEffect(() => {
     const cargarExpediente = async () => {
       if (!alumno || !alumno.id) {
@@ -31,25 +37,26 @@ const DetalleAlumno = () => {
       try {
         const getSafeTime = (obj) => (obj && obj.createdAt && typeof obj.createdAt.toMillis === 'function') ? obj.createdAt.toMillis() : 0;
 
-        // Asistencias
         const qAsistencia = query(collection(db, 'asistencias'), where('alumnoId', '==', alumno.id));
         const asisSnap = await getDocs(qAsistencia);
         const asisList = asisSnap.docs.map(d => ({ id: d.id, ...d.data() }));
         asisList.sort((a, b) => getSafeTime(b) - getSafeTime(a));
         setHistorialAsistencia(asisList);
 
-        // Pagos
         const qPagos = query(collection(db, 'pagos'), where('alumnoId', '==', alumno.id), where('estado', '==', 'Completado'));
         const pagosSnap = await getDocs(qPagos);
         const pagosList = pagosSnap.docs.map(d => ({ id: d.id, tipoRegistro: 'Pago', ...d.data() }));
         
-        // Deudas
         const qDeudas = query(collection(db, 'deudas'), where('alumnoId', '==', alumno.id));
         const deudasSnap = await getDocs(qDeudas);
         const deudasList = deudasSnap.docs.map(d => ({ id: d.id, tipoRegistro: 'Deuda', ...d.data() }));
 
         setHistorialPagos(pagosList);
         setHistorialDeudas(deudasList);
+
+        if (alumno.medico) {
+          setDatosMedicos(alumno.medico);
+        }
 
       } catch (error) {
         console.error("Error al cargar datos:", error);
@@ -61,7 +68,26 @@ const DetalleAlumno = () => {
     cargarExpediente();
   }, [alumno]);
 
-  // === PANTALLA DE SALVACIÓN ===
+  const handleMedicoChange = (e) => {
+    setDatosMedicos({ ...datosMedicos, [e.target.name]: e.target.value });
+  };
+
+  const guardarFichaMedica = async () => {
+    setGuardandoMedico(true);
+    try {
+      const alumnoRef = doc(db, 'alumnos', alumno.id);
+      await updateDoc(alumnoRef, { medico: datosMedicos });
+      alumno.medico = datosMedicos; 
+      setEditandoMedico(false);
+      alert("Ficha Médica de Emergencia actualizada.");
+    } catch (error) {
+      alert("Error al guardar los datos médicos en la nube.");
+      console.error(error);
+    } finally {
+      setGuardandoMedico(false);
+    }
+  };
+
   if (!alumno || !alumno.id) {
     return (
       <div className="container py-5 text-center mt-5">
@@ -75,17 +101,14 @@ const DetalleAlumno = () => {
     );
   }
 
-  // === 2. VARIABLES SEGURAS Y EXTRAS ===
   const nombreSeguro = String(alumno.nombre || 'Usuario');
   const apellidoSeguro = String(alumno.apellido || '');
   const iniciales = `${nombreSeguro.charAt(0)}${apellidoSeguro.charAt(0) || ''}`.toUpperCase();
   
-  // Limpieza del celular para el botón de WhatsApp (quitar espacios o letras por si acaso)
   const celularSeguro = String(alumno.celular || '');
   const numeroLimpio = celularSeguro.replace(/\D/g, '');
   const linkWhatsApp = numeroLimpio.length >= 9 ? `https://wa.me/51${numeroLimpio}` : null;
 
-  // Cálculos Financieros
   const hoyLocal = new Date().toISOString().split('T')[0];
   const vencimiento = String(alumno.vencimientoMensualidad || '2000-01-01');
   const debeMes = hoyLocal >= vencimiento;
@@ -103,9 +126,10 @@ const DetalleAlumno = () => {
   const totalDeudasExtras = deudasPendientes.reduce((sum, item) => sum + (Number(item.monto) || 0), 0);
   const estaMoroso = debeMes || totalDeudasExtras > 0;
 
-  // LTV (Life Time Value) y Cumplimiento
   const totalPagado = historialPagos.reduce((sum, p) => sum + (Number(p.total) || Number(p.monto) || 0), 0);
-  const deudaTotal = (debeMes ? 60 : 0) + totalDeudasExtras; // Asumiendo S/60 la mensualidad
+  
+  // === CORRECCIÓN FINANCIERA V1: La deuda base ahora es S/ 65 ===
+  const deudaTotal = (debeMes ? 65 : 0) + totalDeudasExtras;
   const totalFacturadoHistorico = totalPagado + deudaTotal;
   const porcentajeCumplimiento = totalFacturadoHistorico === 0 ? 100 : Math.round((totalPagado / totalFacturadoHistorico) * 100);
 
@@ -115,7 +139,6 @@ const DetalleAlumno = () => {
     return timeB - timeA;
   });
 
-  // Estadísticas Asistencia
   const asistenciaFiltrada = historialAsistencia.filter(registro => {
     if (filtroMesAsistencia === 'Todos') return true;
     return registro?.fecha && String(registro.fecha).includes(filtroMesAsistencia);
@@ -126,7 +149,6 @@ const DetalleAlumno = () => {
   const faltasCount = asistenciaFiltrada.filter(a => a.estado === 'Faltó').length;
   const porcentajeAsistencia = totalClases === 0 ? 0 : Math.round(((asistenciasCount + tardanzasCount) / totalClases) * 100);
 
-  // === 3. IMPRESIÓN PROFESIONAL ===
   const imprimirReporte = (idContenedor, tituloReporte) => {
     const el = document.getElementById(idContenedor);
     if (!el) return;
@@ -182,7 +204,6 @@ const DetalleAlumno = () => {
       </div>
 
       <div className="row g-4">
-        {/* ================= COLUMNA IZQUIERDA: PERFIL FIJO ================= */}
         <div className="col-lg-4">
           <div className="card border-0 shadow-lg rounded-4 overflow-hidden mb-4">
             <div className="bg-primary p-4 text-center position-relative" style={{ background: 'linear-gradient(135deg, #1e3a8a 0%, #0f172a 100%)' }}>
@@ -204,7 +225,6 @@ const DetalleAlumno = () => {
                 <span className="badge bg-light text-dark border rounded-pill px-3 py-2 shadow-sm">{alumno?.edad || '-'} años</span>
               </div>
 
-              {/* Botones de Comunicación Rápidos */}
               <div className="d-flex gap-2 mb-3">
                 {linkWhatsApp ? (
                   <a href={linkWhatsApp} target="_blank" rel="noreferrer" className="btn btn-success flex-fill fw-bold rounded-3 shadow-sm">
@@ -237,7 +257,6 @@ const DetalleAlumno = () => {
           </div>
         </div>
 
-        {/* ================= COLUMNA DERECHA: TABS Y DASHBOARD ================= */}
         <div className="col-lg-8">
           
           <div className="card border-0 shadow-sm rounded-4 p-2 mb-4 bg-white btn-no-print">
@@ -245,11 +264,6 @@ const DetalleAlumno = () => {
               <li className="nav-item flex-fill text-center">
                 <button className={`nav-link w-100 rounded-pill fw-bold ${tabActiva === 'general' ? 'active bg-primary shadow-sm' : 'text-secondary'}`} onClick={() => setTabActiva('general')}>
                   <i className="fas fa-address-card me-1 d-none d-md-inline"></i> Datos
-                </button>
-              </li>
-              <li className="nav-item flex-fill text-center">
-                <button className={`nav-link w-100 rounded-pill fw-bold ${tabActiva === 'deportivo' ? 'active bg-primary shadow-sm' : 'text-secondary'}`} onClick={() => setTabActiva('deportivo')}>
-                  <i className="fas fa-running me-1 d-none d-md-inline"></i> Físico
                 </button>
               </li>
               <li className="nav-item flex-fill text-center">
@@ -289,71 +303,77 @@ const DetalleAlumno = () => {
                     </div>
                   </div>
                 </div>
+
                 <div className="col-md-6">
                   <div className="card border-0 shadow-sm rounded-4 h-100 border-start border-4 border-danger">
-                    <div className="card-header bg-white border-bottom py-3"><h6 className="fw-bold text-danger mb-0"><i className="fas fa-heartbeat me-2"></i>Ficha Médica (Urgencias)</h6></div>
+                    <div className="card-header bg-white border-bottom py-3 d-flex justify-content-between align-items-center">
+                      <h6 className="fw-bold text-danger mb-0"><i className="fas fa-heartbeat me-2"></i>Ficha Médica</h6>
+                      {!editandoMedico && (
+                        <button className="btn btn-sm btn-outline-danger rounded-pill fw-bold py-1 px-3" onClick={() => setEditandoMedico(true)}>
+                          Editar
+                        </button>
+                      )}
+                    </div>
                     <div className="card-body p-4">
-                      <div className="row g-3">
-                        <div className="col-6">
-                          <small className="text-muted fw-bold text-uppercase">Tipo Sangre</small>
-                          <div className="fw-black text-danger fs-5">{alumno?.tipoSangre || 'N/R'}</div>
+                      {!editandoMedico && alumno.medico?.alergias && (
+                        <div className="alert alert-danger py-2 px-3 border border-danger shadow-sm d-flex align-items-center animate__animated animate__pulse animate__infinite">
+                          <i className="fas fa-exclamation-triangle me-2"></i>
+                          <div className="small fw-bold">{alumno.medico.alergias}</div>
                         </div>
-                        <div className="col-6">
-                          <small className="text-muted fw-bold text-uppercase">Seguro Médico</small>
-                          <div className="fw-medium text-dark">{alumno?.seguro || 'N/R'}</div>
-                        </div>
-                        <div className="col-12 mt-3">
-                          <small className="text-muted fw-bold text-uppercase">Alergias o Condiciones</small>
-                          <div className="bg-danger bg-opacity-10 text-danger p-2 rounded-3 mt-1 fw-bold small border border-danger border-opacity-25">
-                            {alumno?.alergias || 'Ninguna condición reportada.'}
+                      )}
+
+                      {editandoMedico ? (
+                        <div className="row g-3 animate__animated animate__fadeIn">
+                          <div className="col-12">
+                            <label className="form-label small fw-bold text-muted mb-1 text-uppercase">Grupo Sanguíneo</label>
+                            <select name="tipoSangre" className="form-select form-select-sm border-2 fw-bold" value={datosMedicos.tipoSangre} onChange={handleMedicoChange}>
+                              <option value="No especificado">No especificado</option>
+                              <option value="O+">O Positivo (O+)</option>
+                              <option value="O-">O Negativo (O-)</option>
+                              <option value="A+">A Positivo (A+)</option>
+                              <option value="A-">A Negativo (A-)</option>
+                              <option value="B+">B Positivo (B+)</option>
+                              <option value="B-">B Negativo (B-)</option>
+                              <option value="AB+">AB Positivo (AB+)</option>
+                              <option value="AB-">AB Negativo (AB-)</option>
+                            </select>
+                          </div>
+                          <div className="col-12">
+                            <label className="form-label small fw-bold text-danger mb-1 text-uppercase">Alergias</label>
+                            <input type="text" name="alergias" className="form-control form-control-sm border-2 border-danger text-danger fw-bold" placeholder="Ej: Asma, Penicilina..." value={datosMedicos.alergias} onChange={handleMedicoChange} />
+                          </div>
+                          <div className="col-12">
+                            <label className="form-label small fw-bold text-muted mb-1 text-uppercase">Lesiones Previas</label>
+                            <textarea name="lesionesPrevias" className="form-control form-control-sm border-2" rows="2" placeholder="Ej: Esguince derecho" value={datosMedicos.lesionesPrevias} onChange={handleMedicoChange}></textarea>
+                          </div>
+                          <div className="col-12">
+                            <label className="form-label small fw-bold text-muted mb-1 text-uppercase">Seguro de Salud</label>
+                            <input type="text" name="seguro" className="form-control form-control-sm border-2" placeholder="Ej: EsSalud, Sanna" value={datosMedicos.seguro} onChange={handleMedicoChange} />
+                          </div>
+                          <div className="col-12 d-flex gap-2 mt-2">
+                            <button className="btn btn-sm btn-light border fw-bold w-50" onClick={() => setEditandoMedico(false)} disabled={guardandoMedico}>Cancelar</button>
+                            <button className="btn btn-sm btn-danger fw-bold w-50" onClick={guardarFichaMedica} disabled={guardandoMedico}>
+                              {guardandoMedico ? 'Guardando...' : 'Guardar'}
+                            </button>
                           </div>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="row g-3">
+                          <div className="col-6">
+                            <small className="text-muted fw-bold text-uppercase">Tipo Sangre</small>
+                            <div className="fw-black text-danger fs-5">{alumno?.medico?.tipoSangre || 'N/R'}</div>
+                          </div>
+                          <div className="col-6">
+                            <small className="text-muted fw-bold text-uppercase">Seguro Médico</small>
+                            <div className="fw-medium text-dark">{alumno?.medico?.seguro || 'N/R'}</div>
+                          </div>
+                          <div className="col-12">
+                            <small className="text-muted fw-bold text-uppercase">Lesiones Previas</small>
+                            <div className="fw-medium text-dark small">{alumno?.medico?.lesionesPrevias || 'Ninguna registrada.'}</div>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* --- TAB 2: RENDIMIENTO FÍSICO --- */}
-            <div className={`tab-pane fade ${tabActiva === 'deportivo' ? 'show active' : ''}`}>
-              <div className="card border-0 shadow-sm rounded-4 mb-4">
-                <div className="card-header bg-dark text-white py-3 border-0 rounded-top-4">
-                  <h6 className="fw-bold mb-0 text-uppercase tracking-wider"><i className="fas fa-futbol me-2"></i>Perfil Físico y Táctico</h6>
-                </div>
-                <div className="card-body p-4">
-                  <div className="row g-4 text-center mb-4">
-                    <div className="col-4 col-md-3">
-                      <div className="p-3 bg-light rounded-4 border">
-                        <i className="fas fa-shoe-prints fs-3 text-secondary mb-2"></i>
-                        <div className="small text-muted fw-bold text-uppercase">Pierna Hábil</div>
-                        <div className="fw-black text-dark">{alumno?.piernaHabil || 'N/R'}</div>
-                      </div>
-                    </div>
-                    <div className="col-4 col-md-3">
-                      <div className="p-3 bg-light rounded-4 border">
-                        <i className="fas fa-ruler-vertical fs-3 text-secondary mb-2"></i>
-                        <div className="small text-muted fw-bold text-uppercase">Estatura</div>
-                        <div className="fw-black text-dark">{alumno?.estatura ? `${alumno.estatura} m` : 'N/R'}</div>
-                      </div>
-                    </div>
-                    <div className="col-4 col-md-3">
-                      <div className="p-3 bg-light rounded-4 border">
-                        <i className="fas fa-weight fs-3 text-secondary mb-2"></i>
-                        <div className="small text-muted fw-bold text-uppercase">Peso</div>
-                        <div className="fw-black text-dark">{alumno?.peso ? `${alumno.peso} kg` : 'N/R'}</div>
-                      </div>
-                    </div>
-                    <div className="col-12 col-md-3">
-                      <div className="p-3 bg-primary bg-opacity-10 rounded-4 border border-primary border-opacity-25 h-100 d-flex flex-column justify-content-center">
-                        <div className="small text-primary fw-bold text-uppercase">Posición en Cancha</div>
-                        <div className="fw-black text-dark fs-5">{alumno?.posicion || 'Polifuncional'}</div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="bg-light p-3 rounded-3 border border-dashed text-center">
-                    <i className="fas fa-chart-line text-muted mb-2 fs-4"></i>
-                    <p className="text-muted small mb-0 fw-medium">Las estadísticas de goles, torneos jugados y reportes técnicos del entrenador se reflejarán aquí al iniciar temporada.</p>
                   </div>
                 </div>
               </div>
@@ -372,7 +392,6 @@ const DetalleAlumno = () => {
                 </div>
               </div>
 
-              {/* Barra de Progreso LTV */}
               <div className="card border-0 shadow-sm rounded-4 p-4 mb-4 border">
                 <div className="d-flex justify-content-between align-items-end mb-2">
                   <div>
@@ -414,6 +433,12 @@ const DetalleAlumno = () => {
                         {cargando ? <tr><td colSpan="5" className="text-center py-4"><div className="spinner-border text-primary"></div></td></tr> : lineaTiempoFinanciera.length === 0 ? <tr><td colSpan="5" className="text-center py-4 text-muted fw-medium">No se registran transacciones.</td></tr> : (
                           lineaTiempoFinanciera.map(mov => {
                             const esPago = mov.tipoRegistro === 'Pago';
+                            
+                            // === LOGICA DE PRIVACIDAD PARA BECADOS ===
+                            const conceptoOriginal = String(mov.conceptoResumen || mov.concepto || '-');
+                            const esBecado = conceptoOriginal.includes('BECADO');
+                            const conceptoLimpioParaImpresion = conceptoOriginal.replace('(BECADO)', '').trim();
+
                             return (
                               <tr key={String(mov.id)}>
                                 <td className="ps-4 text-dark fw-bold small">{mov.fecha || mov.fechaGeneracion || mov.fechaPago || '-'}</td>
@@ -423,7 +448,9 @@ const DetalleAlumno = () => {
                                   </span>
                                 </td>
                                 <td className="fw-medium text-dark" style={{ fontSize: '13px' }}>
-                                  {mov.conceptoResumen || mov.concepto || '-'}
+                                  {conceptoLimpioParaImpresion}
+                                  {/* Etiqueta oculta al imprimir pero visible en pantalla */}
+                                  {esBecado && <span className="badge bg-success bg-opacity-25 text-success border border-success ms-2 btn-no-print" title="Solo visible para Administración">BECADO</span>}
                                   {mov.idRecibo && <div className="text-muted small font-monospace mt-1">Ref: {mov.idRecibo}</div>}
                                 </td>
                                 <td className={`text-end fw-black fs-6 ${esPago ? 'text-success' : 'text-danger'}`}>

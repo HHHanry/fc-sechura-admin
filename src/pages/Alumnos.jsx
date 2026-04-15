@@ -13,6 +13,15 @@ const Alumnos = () => {
 
   const hoy = obtenerFechaHoy();
 
+  // Función para sumar 1 mes exacto a una fecha (Formato YYYY-MM-DD)
+  const calcularProximoVencimiento = (fechaBase) => {
+    if (!fechaBase) return hoy;
+    const fecha = new Date(fechaBase);
+    // Le sumamos un mes asegurándonos que no haya desfase por la zona horaria
+    fecha.setUTCMonth(fecha.getUTCMonth() + 1); 
+    return fecha.toISOString().split('T')[0];
+  };
+
   const [alumnos, setAlumnos] = useState([]);
   const [mostrarForm, setMostrarForm] = useState(false);
   const [alumnoSeleccionado, setAlumnoSeleccionado] = useState(null);
@@ -31,7 +40,8 @@ const Alumnos = () => {
     nombre: '', apellido: '', edad: '', categoria: '6', dni: '',
     fechaNacimiento: '', colegio: '', celular: '', distrito: 'Sechura', direccion: '', apoderado: '', foto: null,
     fechaInscripcion: hoy, 
-    vencimientoMensualidad: hoy // Por defecto vence HOY para que nazca como "PENDIENTE"
+    // CORRECCIÓN: Nace con 1 mes de gracia desde su inscripción
+    vencimientoMensualidad: calcularProximoVencimiento(hoy) 
   });
 
   const alumnosCollectionRef = collection(db, 'alumnos');
@@ -66,10 +76,9 @@ const Alumnos = () => {
       nuevosDatos.edad = calcularEdad(value);
     }
     
-    // LA REGLA DEL PENDIENTE: Si cambias la fecha de inscripción, el vencimiento toma ESA MISMA FECHA.
-    // Esto asegura que el alumno empiece debiendo hasta que pase por "Caja".
+    // CORRECCIÓN DE LA REGLA: Si cambias la fecha de inscripción, el vencimiento será 1 MES DESPUÉS.
     if (name === 'fechaInscripcion' && !modoEdicion) {
-      nuevosDatos.vencimientoMensualidad = value;
+      nuevosDatos.vencimientoMensualidad = calcularProximoVencimiento(value);
     }
     
     setFormData(nuevosDatos);
@@ -87,7 +96,7 @@ const Alumnos = () => {
     setFormData({
       ...alumno,
       fechaInscripcion: alumno.fechaInscripcion || hoy,
-      vencimientoMensualidad: alumno.vencimientoMensualidad || hoy
+      vencimientoMensualidad: alumno.vencimientoMensualidad || calcularProximoVencimiento(hoy)
     });
     setArchivoFoto(null); 
     setModoEdicion(true);
@@ -99,7 +108,7 @@ const Alumnos = () => {
     setFormData({ 
       nombre: '', apellido: '', edad: '', categoria: '6', dni: '', fechaNacimiento: '', 
       colegio: '', celular: '', distrito: 'Sechura', direccion: '', apoderado: '', foto: null,
-      fechaInscripcion: hoy, vencimientoMensualidad: hoy 
+      fechaInscripcion: hoy, vencimientoMensualidad: calcularProximoVencimiento(hoy) 
     });
     setArchivoFoto(null);
     setModoEdicion(false);
@@ -149,12 +158,11 @@ const Alumnos = () => {
       } else {
         const qrGenerado = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${formData.dni}`;
         
-        // Al registrar, nace con la fecha de vencimiento igual a la de inscripción (Moroso automático)
         const nuevoAlumnoData = { 
           ...formData, 
           foto: urlFotoFinal, 
           qr: qrGenerado,
-          createdAt: new Date() // Sello de tiempo seguro para futuras consultas
+          createdAt: new Date()
         };
         delete nuevoAlumnoData.id; 
         
@@ -183,7 +191,6 @@ const Alumnos = () => {
 
   const cerrarCarnet = () => setAlumnoSeleccionado(null);
 
-  // === IMPRESIÓN DEL CARNET (MEDIDAS EXACTAS) ===
   const imprimirCarnetPVC = () => {
     const ventanaImpresion = window.open('', '_blank');
     const carnetFrontalHTML = document.getElementById('carnet-frontal-export').innerHTML;
@@ -318,14 +325,14 @@ const Alumnos = () => {
                 <h6 className="fw-bold text-primary mb-3 border-bottom pb-2">4. Parámetros de Facturación</h6>
                 <div className="row g-3 mb-4 bg-primary bg-opacity-10 p-3 rounded-3 border border-primary border-opacity-25">
                   <div className="col-md-6">
-                    <label className="form-label fw-bold text-primary small">Fecha de Inscripción (Manual/Automática)</label>
+                    <label className="form-label fw-bold text-primary small">Fecha de Inscripción</label>
                     <input type="date" className="form-control border-primary shadow-sm" name="fechaInscripcion" value={formData.fechaInscripcion} onChange={handleChange} required />
-                    {!modoEdicion && <small className="text-muted d-block mt-2 fw-medium"><i className="fas fa-info-circle me-1"></i> Al registrar un nuevo alumno, el estado será <strong className="text-danger">PENDIENTE</strong> hasta que registre su primer pago en Caja.</small>}
+                    {!modoEdicion && <small className="text-muted d-block mt-2 fw-medium"><i className="fas fa-info-circle me-1"></i> El sistema le dará 1 mes de cobertura. Si la fecha es de un mes anterior, aparecerá PENDIENTE automáticamente.</small>}
                   </div>
                   <div className="col-md-6">
-                    <label className="form-label fw-bold text-danger small">Vencimiento del Mes (Corte)</label>
+                    <label className="form-label fw-bold text-danger small">Próximo Vencimiento (Corte)</label>
                     <input type="date" className="form-control border-danger fw-bold shadow-sm" name="vencimientoMensualidad" value={formData.vencimientoMensualidad} onChange={handleChange} required />
-                    <small className="text-muted d-block mt-2 fw-medium"><i className="fas fa-cogs me-1"></i> Este campo se actualiza automáticamente sumando 1 mes cuando se registra un pago en Caja.</small>
+                    <small className="text-muted d-block mt-2 fw-medium"><i className="fas fa-cogs me-1"></i> Calculado un mes después de la inscripción. Este campo avanza al pagar en Caja.</small>
                   </div>
                 </div>
 
@@ -405,6 +412,7 @@ const Alumnos = () => {
                         const d = new Date();
                         const hoyLocal = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
                         const vencimiento = alumno.vencimientoMensualidad || '2000-01-01';
+                        // La regla se mantiene: si hoy es MAYOR O IGUAL al día de vencimiento, debe.
                         const estaEnDeuda = hoyLocal >= vencimiento;
 
                         return (

@@ -14,9 +14,10 @@ const RegistrarPagos = () => {
   const [reciboGenerado, setReciboGenerado] = useState(null);
   const [errorModal, setErrorModal] = useState(null);
 
-  // === CATÁLOGO DE PRODUCTOS ===
+  // === CATÁLOGO DE PRODUCTOS (Mensualidad ajustada a S/ 65) ===
   const catalogoPrecios = {
-    'Mensualidad': 60,
+    'Mensualidad': 65,
+    'Mensualidad (BECADO)': 0, // <-- NUEVA OPCIÓN
     'Matrícula Anual': 50,
     'Uniforme Completo': 80,
     'Polo de Entrenamiento': 35,
@@ -68,12 +69,18 @@ const RegistrarPagos = () => {
   const vuelto = entregadoNum - totalCarrito > 0 ? entregadoNum - totalCarrito : 0;
 
   useEffect(() => {
-    if (carrito.length > 0 && montoEntregado === '') {
+    // Si el carrito tiene cosas que cuestan dinero, sugerimos el exacto
+    if (carrito.length > 0 && montoEntregado === '' && totalCarrito > 0) {
       setMontoEntregado(totalCarrito.toString());
-    } else if (carrito.length === 0) {
+    } 
+    // Si el total es 0 (ej: solo hay una beca), el monto entregado DEBE ser 0
+    else if (totalCarrito === 0 && carrito.length > 0) {
+      setMontoEntregado('0');
+    }
+    else if (carrito.length === 0) {
       setMontoEntregado('');
     }
-  }, [totalCarrito]);
+  }, [totalCarrito, carrito]);
 
   // === FUNCIONES DE UI ===
   const seleccionarAlumno = (alumno) => { setAlumnoEncontrado(alumno); setBusquedaTexto(''); };
@@ -82,15 +89,22 @@ const RegistrarPagos = () => {
   const handleConceptoChange = (e) => {
     const concepto = e.target.value;
     setNuevoItem({ ...nuevoItem, concepto: concepto, monto: catalogoPrecios[concepto] || 0 });
+    
+    // Si elige Beca, forzamos que el método de pago no sea Efectivo, sino una "Aprobación" interna
+    if (concepto === 'Mensualidad (BECADO)') {
+      setMetodoPago('Aprobación Interna');
+    } else {
+      setMetodoPago('Efectivo');
+    }
   };
 
   const agregarAlCarrito = () => {
-    if (nuevoItem.monto <= 0) return setErrorModal("El costo del servicio debe ser mayor a 0.");
+    // Ya no bloqueamos si el monto es 0, porque la Beca cuesta 0
+    if (nuevoItem.monto < 0) return setErrorModal("El costo no puede ser negativo.");
     
-    // Si es mensualidad, le pegamos el mes al nombre para que el recibo sea súper específico
     let nombreFinal = nuevoItem.concepto;
-    if (nuevoItem.concepto === 'Mensualidad') {
-      nombreFinal = `Mensualidad (${nuevoItem.mesEspecifico})`;
+    if (nuevoItem.concepto.includes('Mensualidad')) {
+      nombreFinal = `${nuevoItem.concepto} (${nuevoItem.mesEspecifico})`;
     }
 
     setCarrito([...carrito, { ...nuevoItem, concepto: nombreFinal, id: Date.now(), isDeudaVieja: false }]);
@@ -118,26 +132,24 @@ const RegistrarPagos = () => {
       const numeroRecibo = `REC-${Date.now().toString().slice(-6)}`;
       let reciboGeneradoData = null;
 
-      // A: Cobro de dinero real
-      if (entregadoNum > 0) {
-        const montoRealAlRecibo = entregadoNum > totalCarrito ? totalCarrito : entregadoNum; 
-        
-        await addDoc(collection(db, 'pagos'), {
-          idRecibo: numeroRecibo,
-          alumnoId: alumnoEncontrado.id,
-          alumnoNombre: `${alumnoEncontrado.nombre} ${alumnoEncontrado.apellido}`,
-          alumnoDni: alumnoEncontrado.dni || '',
-          fecha: fechaOperacion,
-          metodo: metodoPago,
-          conceptoResumen: resumenNombres,
-          items: carrito,
-          total: montoRealAlRecibo,
-          estado: 'Completado',
-          createdAt: serverTimestamp()
-        });
+      // A: Guardar el movimiento (Incluso si es S/ 0 por Beca, se guarda como Comprobante)
+      const montoRealAlRecibo = entregadoNum > totalCarrito ? totalCarrito : entregadoNum; 
+      
+      await addDoc(collection(db, 'pagos'), {
+        idRecibo: numeroRecibo,
+        alumnoId: alumnoEncontrado.id,
+        alumnoNombre: `${alumnoEncontrado.nombre} ${alumnoEncontrado.apellido}`,
+        alumnoDni: alumnoEncontrado.dni || '',
+        fecha: fechaOperacion,
+        metodo: metodoPago,
+        conceptoResumen: resumenNombres,
+        items: carrito,
+        total: montoRealAlRecibo,
+        estado: 'Completado',
+        createdAt: serverTimestamp()
+      });
 
-        reciboGeneradoData = { numero: numeroRecibo, totalPagado: montoRealAlRecibo.toFixed(2), alumno: alumnoEncontrado.nombre, deudaCreada: deudaGenerada.toFixed(2) };
-      }
+      reciboGeneradoData = { numero: numeroRecibo, totalPagado: montoRealAlRecibo.toFixed(2), alumno: alumnoEncontrado.nombre, deudaCreada: deudaGenerada.toFixed(2) };
 
       // B: Generar la deuda si no alcanzó
       if (deudaGenerada > 0) {
@@ -150,10 +162,6 @@ const RegistrarPagos = () => {
           estado: 'Pendiente',
           createdAt: serverTimestamp()
         });
-
-        if (entregadoNum === 0) {
-          reciboGeneradoData = { numero: 'SIN RECIBO', totalPagado: '0.00', alumno: alumnoEncontrado.nombre, deudaCreada: deudaGenerada.toFixed(2) };
-        }
       }
 
       // C: Pagar deudas viejas si estaban en el carrito
@@ -163,11 +171,13 @@ const RegistrarPagos = () => {
         }
       }
 
-      // D: Lógica de la Mensualidad (Adelantar mes)
+      // D: Lógica de la Mensualidad o Beca (Adelantar mes)
       const pagoMensualidad = carrito.find(c => c.concepto.includes('Mensualidad'));
+      // Solo adelantamos si se pagó completo (o si es beca que cuesta 0)
       if (pagoMensualidad && deudaGenerada === 0) {
         const fechaVencimientoActual = new Date(alumnoEncontrado.vencimientoMensualidad || fechaOperacion);
-        fechaVencimientoActual.setMonth(fechaVencimientoActual.getMonth() + 1);
+        // Sumamos 1 mes asegurando la misma zona horaria
+        fechaVencimientoActual.setUTCMonth(fechaVencimientoActual.getUTCMonth() + 1);
         const nuevoVencimiento = fechaVencimientoActual.toISOString().split('T')[0];
         
         await updateDoc(doc(db, 'alumnos', alumnoEncontrado.id), {
@@ -188,7 +198,6 @@ const RegistrarPagos = () => {
     }
   };
 
-  // Helper para saber si el alumno debe
   const hoyStr = new Date().toISOString().split('T')[0];
   const estaMoroso = alumnoEncontrado ? hoyStr >= (alumnoEncontrado.vencimientoMensualidad || '2000-01-01') : false;
 
@@ -286,7 +295,7 @@ const RegistrarPagos = () => {
                     <i className={`fas ${estaMoroso ? 'fa-exclamation-triangle' : 'fa-check-circle'} fa-2x me-3`}></i>
                     <div>
                       <h6 className="fw-bold mb-0 text-uppercase">{estaMoroso ? 'ALUMNO MOROSO' : 'ALUMNO AL DÍA'}</h6>
-                      <small>{estaMoroso ? `Vencimiento registrado: ${alumnoEncontrado.vencimientoMensualidad || 'N/A'}` : `Su próxima mensualidad vence el: ${alumnoEncontrado.vencimientoMensualidad}`}</small>
+                      <small>{estaMoroso ? `Corte registrado: ${alumnoEncontrado.vencimientoMensualidad || 'N/A'}` : `Su próxima mensualidad vence el: ${alumnoEncontrado.vencimientoMensualidad}`}</small>
                     </div>
                   </div>
 
@@ -326,7 +335,11 @@ const RegistrarPagos = () => {
                 <div className="col-md-6">
                   <label className="form-label fw-bold small text-secondary text-uppercase">Concepto</label>
                   <select className="form-select form-select-lg border-2 shadow-sm fw-bold text-dark" value={nuevoItem.concepto} onChange={handleConceptoChange}>
-                    {Object.keys(catalogoPrecios).map(cat => (<option key={cat} value={cat}>{cat}</option>))}
+                    {Object.keys(catalogoPrecios).map(cat => (
+                      <option key={cat} value={cat} className={cat.includes('BECADO') ? 'text-success fw-bold' : ''}>
+                        {cat}
+                      </option>
+                    ))}
                     <option value="Otro">Otro Ingreso (Especificar)</option>
                   </select>
                 </div>
@@ -335,15 +348,24 @@ const RegistrarPagos = () => {
                   <label className="form-label fw-bold small text-secondary text-uppercase">Costo (S/)</label>
                   <div className="input-group input-group-lg shadow-sm">
                     <span className="input-group-text bg-white fw-bold border-2">S/</span>
-                    <input type="number" className="form-control fw-black text-primary border-2 ps-2" value={nuevoItem.monto} onChange={(e) => setNuevoItem({...nuevoItem, monto: e.target.value})} min="0" />
+                    <input 
+                      type="number" 
+                      className={`form-control fw-black text-primary border-2 ps-2 ${nuevoItem.concepto.includes('BECADO') ? 'bg-light text-success' : ''}`}
+                      value={nuevoItem.monto} 
+                      onChange={(e) => setNuevoItem({...nuevoItem, monto: e.target.value})} 
+                      min="0" 
+                      disabled={nuevoItem.concepto.includes('BECADO')} // Bloqueamos el input si es beca
+                    />
                   </div>
                 </div>
 
-                {/* MAGIA 2: Si elige Mensualidad, le obligamos a elegir el MES */}
-                {nuevoItem.concepto === 'Mensualidad' && (
+                {/* MAGIA 2: Si elige Mensualidad o Beca, le obligamos a elegir el MES */}
+                {nuevoItem.concepto.includes('Mensualidad') && (
                   <div className="col-md-12 animate__animated animate__fadeInDown animate__faster">
-                    <label className="form-label fw-bold small text-danger text-uppercase"><i className="fas fa-calendar-alt me-1"></i> Mes que está pagando</label>
-                    <select className="form-select border-2 border-danger shadow-sm fw-bold text-danger bg-danger bg-opacity-10" value={nuevoItem.mesEspecifico} onChange={(e) => setNuevoItem({...nuevoItem, mesEspecifico: e.target.value})}>
+                    <label className={`form-label fw-bold small text-uppercase ${nuevoItem.concepto.includes('BECADO') ? 'text-success' : 'text-danger'}`}>
+                      <i className="fas fa-calendar-alt me-1"></i> Mes a Aplicar {nuevoItem.concepto.includes('BECADO') && '(Gratuito)'}
+                    </label>
+                    <select className={`form-select border-2 shadow-sm fw-bold ${nuevoItem.concepto.includes('BECADO') ? 'border-success text-success bg-success bg-opacity-10' : 'border-danger text-danger bg-danger bg-opacity-10'}`} value={nuevoItem.mesEspecifico} onChange={(e) => setNuevoItem({...nuevoItem, mesEspecifico: e.target.value})}>
                       {mesesArray.map(mes => <option key={mes} value={mes}>{mes}</option>)}
                     </select>
                   </div>
@@ -351,11 +373,11 @@ const RegistrarPagos = () => {
 
                 <div className="col-md-8">
                   <label className="form-label fw-bold small text-secondary text-uppercase">Nota Técnica (Opcional)</label>
-                  <input type="text" className="form-control border-2 shadow-sm" placeholder="Ej. Talla M, o Pago parcial de..." value={nuevoItem.detalle} onChange={(e) => setNuevoItem({...nuevoItem, detalle: e.target.value})} />
+                  <input type="text" className="form-control border-2 shadow-sm" placeholder={nuevoItem.concepto.includes('BECADO') ? "Ej: Beca por rendimiento deportivo..." : "Ej: Talla M, o Pago parcial de..."} value={nuevoItem.detalle} onChange={(e) => setNuevoItem({...nuevoItem, detalle: e.target.value})} />
                 </div>
                 
                 <div className="col-md-4 d-flex align-items-end">
-                  <button className="btn btn-dark w-100 fw-bold shadow border-0" style={{ padding: '11px' }} onClick={agregarAlCarrito}>
+                  <button className={`btn w-100 fw-bold shadow border-0 ${nuevoItem.concepto.includes('BECADO') ? 'btn-success' : 'btn-dark'}`} style={{ padding: '11px' }} onClick={agregarAlCarrito}>
                     <i className="fas fa-plus me-2"></i> Añadir a Ticket
                   </button>
                 </div>
@@ -390,11 +412,15 @@ const RegistrarPagos = () => {
                     {carrito.map((item, index) => (
                       <li key={item.id} className="list-group-item bg-transparent px-0 py-3 d-flex justify-content-between align-items-center">
                         <div>
-                          <div className={`fw-black ${item.isDeudaVieja ? 'text-danger' : 'text-dark'}`}>{index + 1}. {item.concepto}</div>
+                          <div className={`fw-black ${item.isDeudaVieja ? 'text-danger' : (item.concepto.includes('BECADO') ? 'text-success' : 'text-dark')}`}>
+                            {index + 1}. {item.concepto}
+                          </div>
                           {item.detalle && <div className="small text-muted font-monospace mt-1"><i className="fas fa-angle-right me-1"></i>{item.detalle}</div>}
                         </div>
                         <div className="d-flex align-items-center gap-3">
-                          <span className="fw-black text-dark fs-5">S/ {parseFloat(item.monto).toFixed(2)}</span>
+                          <span className={`fw-black fs-5 ${item.monto === 0 ? 'text-success' : 'text-dark'}`}>
+                            {item.monto === 0 ? 'GRATIS' : `S/ ${parseFloat(item.monto).toFixed(2)}`}
+                          </span>
                           <button className="btn btn-sm text-danger bg-danger bg-opacity-10 rounded-circle p-2" onClick={() => quitarDelCarrito(item.id)}><i className="fas fa-trash"></i></button>
                         </div>
                       </li>
@@ -420,18 +446,21 @@ const RegistrarPagos = () => {
                     value={montoEntregado} 
                     onChange={(e) => setMontoEntregado(e.target.value)}
                     min="0"
+                    disabled={totalCarrito === 0 && carrito.length > 0} // Bloqueamos si es todo gratis
                   />
                 </div>
 
-                {/* Botones Rápidos */}
-                <div className="d-flex gap-2 mb-4">
-                  <button className="btn btn-sm btn-outline-secondary fw-bold flex-fill" onClick={() => setMontoEntregado(totalCarrito.toString())}>Exacto</button>
-                  <button className="btn btn-sm btn-outline-success fw-bold flex-fill" onClick={() => setMontoEntregado('50')}>S/ 50</button>
-                  <button className="btn btn-sm btn-outline-success fw-bold flex-fill" onClick={() => setMontoEntregado('100')}>S/ 100</button>
-                </div>
-                
-                {/* Desglose de Operación para evitar confusiones */}
+                {/* Botones Rápidos (Desaparecen si el carrito es GRATIS) */}
                 {totalCarrito > 0 && (
+                  <div className="d-flex gap-2 mb-4">
+                    <button className="btn btn-sm btn-outline-secondary fw-bold flex-fill" onClick={() => setMontoEntregado(totalCarrito.toString())}>Exacto</button>
+                    <button className="btn btn-sm btn-outline-success fw-bold flex-fill" onClick={() => setMontoEntregado('50')}>S/ 50</button>
+                    <button className="btn btn-sm btn-outline-success fw-bold flex-fill" onClick={() => setMontoEntregado('100')}>S/ 100</button>
+                  </div>
+                )}
+                
+                {/* Desglose de Operación */}
+                {carrito.length > 0 && (
                   <div className="bg-light border rounded-4 p-3 shadow-sm">
                     <h6 className="fw-bold text-center text-muted mb-3 border-bottom pb-2">Auditoría de Operación</h6>
                     
@@ -454,11 +483,15 @@ const RegistrarPagos = () => {
                       </div>
                     )}
 
-                    {entregadoNum >= totalCarrito && (
+                    {totalCarrito === 0 ? (
+                      <div className="text-center text-success fw-bold mt-2 pt-2 border-top border-success border-opacity-25">
+                        <i className="fas fa-award me-1"></i> Operación Bonificada (Beca)
+                      </div>
+                    ) : entregadoNum >= totalCarrito ? (
                       <div className="text-center text-success fw-bold mt-2 pt-2 border-top border-success border-opacity-25">
                         <i className="fas fa-check-circle me-1"></i> Cobro Completo
                       </div>
-                    )}
+                    ) : null}
                   </div>
                 )}
               </div>
@@ -466,10 +499,11 @@ const RegistrarPagos = () => {
               <div className="row g-3 mb-4">
                 <div className="col-6">
                   <label className="form-label fw-bold small text-muted text-uppercase">Método</label>
-                  <select className="form-select border-2 fw-bold text-dark" value={metodoPago} onChange={(e) => setMetodoPago(e.target.value)} disabled={entregadoNum === 0}>
+                  <select className="form-select border-2 fw-bold text-dark" value={metodoPago} onChange={(e) => setMetodoPago(e.target.value)} disabled={entregadoNum === 0 && totalCarrito > 0}>
                     <option value="Efectivo">💵 Efectivo</option>
                     <option value="Yape/Plin">📱 Yape / Plin</option>
                     <option value="Transferencia">🏦 Transf.</option>
+                    <option value="Aprobación Interna">✅ Beca/Convenio</option>
                   </select>
                 </div>
                 <div className="col-6">
@@ -481,7 +515,7 @@ const RegistrarPagos = () => {
               <button 
                 className="btn btn-lg w-100 fw-black text-white shadow-lg py-3 rounded-4 d-flex justify-content-center align-items-center border-0" 
                 style={{ 
-                  backgroundColor: carrito.length > 0 ? (entregadoNum === 0 ? '#ef4444' : '#10b981') : '#cbd5e1', 
+                  backgroundColor: carrito.length > 0 ? (entregadoNum === 0 && totalCarrito > 0 ? '#ef4444' : '#10b981') : '#cbd5e1', 
                   cursor: carrito.length > 0 ? 'pointer' : 'not-allowed', 
                   transition: 'all 0.2s',
                   fontSize: '1.2rem'
@@ -492,9 +526,9 @@ const RegistrarPagos = () => {
                 {procesando ? (
                   <span className="spinner-border spinner-border-sm me-3"></span>
                 ) : (
-                  <i className={`fas ${entregadoNum === 0 ? 'fa-clipboard-list' : 'fa-lock'} me-3`}></i>
+                  <i className={`fas ${entregadoNum === 0 && totalCarrito > 0 ? 'fa-clipboard-list' : 'fa-lock'} me-3`}></i>
                 )}
-                {procesando ? 'Procesando en Nube...' : (entregadoNum === 0 ? 'REGISTRAR SOLO DEUDA' : 'CERRAR Y COBRAR')}
+                {procesando ? 'Procesando en Nube...' : (entregadoNum === 0 && totalCarrito > 0 ? 'REGISTRAR SOLO DEUDA' : 'CERRAR Y APROBAR')}
               </button>
             </div>
           </div>
@@ -515,7 +549,7 @@ const RegistrarPagos = () => {
             
             <div className="bg-light rounded-4 p-4 mb-4 text-start border shadow-sm">
               <div className="d-flex justify-content-between mb-3 pb-3 border-bottom">
-                <span className="text-muted fw-bold small text-uppercase">N° Recibo</span>
+                <span className="text-muted fw-bold small text-uppercase">N° Recibo / Comprobante</span>
                 <span className="text-dark fw-black font-monospace">{reciboGenerado.numero}</span>
               </div>
               <div className="d-flex justify-content-between align-items-center mb-2">
