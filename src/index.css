@@ -1,0 +1,362 @@
+:root {
+  --fc-azul: #1e3a8a;
+  --fc-turquesa: #0d9488;
+  --fc-celeste: #7dd3fc;
+  --fc-bg: #f8fafc;
+}
+
+body {
+  background-color: var(--fc-bg);
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
+
+/* Bordado de inputs */
+.form-control, .form-select {
+  border: 2px solid #cbd5e1 !important;
+  border-radius: 10px;
+  background-color: #ffffff;
+}
+
+.form-control:focus, .form-select:focus {
+  border-color: var(--fc-turquesa) !important;
+  box-shadow: 0 0 0 0.25rem rgba(13, 148, 136, 0.2);
+}
+
+.btn-turquesa {
+  background-color: var(--fc-turquesa);
+  color: white;
+}
+
+.btn-turquesa:hover {
+  background-color: #0b7a70;
+  color: white;
+}
+
+/* =========================================
+   LA MAGIA DEL MODAL FLOTANTE (CARNET)
+   ========================================= */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: rgba(15, 23, 42, 0.85); /* Fondo oscuro */
+  backdrop-filter: blur(8px); /* Efecto cristal borroso */
+  z-index: 9999; /* Este número altísimo asegura que salga por encima de TODO */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.carnet-id-horizontal {
+  width: 550px;
+  height: 320px;
+  background-color: #ffffff;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+  position: relative;
+  display: flex;
+  animation: slideUp 0.3s ease-out;
+}
+
+/* Lado Izquierdo: Azul y Foto */
+.carnet-left {
+  width: 35%;
+  background: linear-gradient(135deg, var(--fc-azul) 0%, var(--fc-turquesa) 100%);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  text-align: center;
+  border-right: 4px solid var(--fc-celeste);
+}
+
+.carnet-foto-hz {
+  width: 110px;
+  height: 140px;
+  border-radius: 8px;
+  border: 3px solid #ffffff;
+  object-fit: cover;
+  margin-bottom: 15px;
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+  background-color: #f8fafc;
+}
+
+.carnet-motto-hz {
+  font-family: serif;
+  font-style: italic;
+  font-size: 0.85rem;
+  opacity: 0.95;
+  line-height: 1.2;
+}
+
+/* Lado Derecho: Datos y QR */
+.carnet-right {
+  width: 65%;
+  padding: 20px 23px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.carnet-title {
+  color: var(--fc-azul);
+  font-size: 1.1rem;
+  font-weight: 900;
+  letter-spacing: 1px;
+  border-bottom: 2px solid #e2e8f0;
+  padding-bottom: 4px;
+  margin-bottom: 10px;
+}
+
+.data-label {
+  font-size: 0.65rem;
+  color: #64748b;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  margin-bottom: 2px;
+}
+
+.data-value {
+  font-size: 1.02rem;
+  color: #0f172a;
+  font-weight: 700;
+  margin-bottom: 8px;
+  padding: 0;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
+/* Caja del QR */
+.carnet-qr-hz {
+  width: 105px;
+  height: 105px;
+  padding: 4px;
+  background: white;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  flex-shrink: 0;
+}
+/* Botón de Imprimir */
+.btn-imprimir {
+  background-color: var(--fc-azul);
+  color: white;
+  transition: all 0.2s ease;
+}
+
+.btn-imprimir:hover {
+  background-color: #152c6b;
+  color: white;
+}
+
+/* =========================================
+   REGLAS EXACTAS PARA LA IMPRESORA
+   ========================================= */
+/* =========================================
+   REGLAS DE IMPRESIÓN (NIVEL DIOS + COLORES BLINDADOS)
+   ========================================= */
+@media print {
+  @page {
+    size: 8.54cm 5.4cm;
+    margin: 0;
+  }
+
+  html, body, #root {
+    width: 100vw !important;
+    height: 100vh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    background-color: white !important;
+  }
+
+  .hide-on-print {
+    display: none !important;
+    height: 0 !important;
+    width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .modal-overlay {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    background: white !important;
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  .modal-overlay > div {
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  .btn-no-print {
+    display: none !important;
+  }
+
+  .carnet-id-horizontal {
+    position: absolute !important;
+    top: 0 !important;
+    left: 0 !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    transform: scale(0.57) !important; 
+    transform-origin: 0 0 !important;
+    page-break-inside: avoid !important;
+  }
+
+  /* === FORZAR COLORES DE FONDO AL IMPRIMIR === */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  
+}
+.scanning-line {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 3px;
+  background: rgba(125, 211, 252, 0.6); /* Celeste FC Sechura */
+  box-shadow: 0 0 10px var(--fc-celeste);
+  animation: scan 2.5s infinite linear;
+  z-index: 5;
+}
+/* Portada Hero */
+.dashboard-hero {
+  height: 400px;
+  background: linear-gradient(rgba(30, 58, 138, 0.7), rgba(13, 148, 136, 0.7)), url('./assets/dashboard-cover.jpg');background-size: cover;
+  background-position: center;
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  text-align: center;
+  margin-bottom: 40px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+}
+
+.hero-content h1 {
+  font-size: 3.5rem;
+  font-weight: 900;
+  text-shadow: 2px 2px 10px rgba(0,0,0,0.3);
+}
+
+.slogan-box {
+  background: white;
+  border-left: 5px solid var(--fc-turquesa);
+  padding: 20px;
+  border-radius: 12px;
+  font-style: italic;
+  font-family: 'serif';
+  color: var(--fc-azul);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+.kpi-card {
+  transition: transform 0.3s ease;
+  border: none;
+  border-radius: 20px;
+}
+
+.kpi-card:hover {
+  transform: translateY(-10px);
+}
+/* --- CUSTOM HAMBURGER ANIMATION --- */
+.navbar-toggler {
+  width: 45px;
+  height: 45px;
+  position: relative;
+  transition: .5s ease-in-out;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 6px;
+}
+
+.navbar-toggler span {
+  display: block;
+  width: 28px;
+  height: 3px;
+  background: white;
+  border-radius: 9px;
+  transition: .25s ease-in-out;
+}
+
+/* Animación a X cuando se abre */
+.navbar-toggler:not(.collapsed) span:nth-child(1) {
+  transform: translateY(9px) rotate(45deg);
+}
+.navbar-toggler:not(.collapsed) span:nth-child(2) {
+  opacity: 0;
+}
+.navbar-toggler:not(.collapsed) span:nth-child(3) {
+  transform: translateY(-9px) rotate(-45deg);
+}
+
+/* --- RESPONSIVE MENU STYLE (Mobile) --- */
+@media (max-width: 991.98px) {
+  .navbar-collapse {
+    background: rgba(30, 58, 138, 0.95); /* Azul profundo con transparencia */
+    backdrop-filter: blur(10px); /* Efecto cristal */
+    position: absolute;
+    top: 100%;
+    left: 15px;
+    right: 15px;
+    border-radius: 20px;
+    padding: 20px;
+    margin-top: 15px;
+    box-shadow: 0 15px 30px rgba(0,0,0,0.2);
+    border: 1px solid rgba(255,255,255,0.1);
+    z-index: 1000;
+  }
+
+  .nav-item {
+    width: 100%;
+    text-align: center;
+    padding: 8px 0;
+  }
+
+  .nav-link {
+    font-size: 1.1rem;
+    padding: 12px !important;
+  }
+
+  .nav-item.ms-lg-4 {
+    margin-top: 15px;
+    margin-left: 0 !important;
+  }
+}
+
+/* Ajustes de margen para que el contenido no se pegue al borde en móviles */
+@media (max-width: 576px) {
+  .container {
+    padding-left: 20px;
+    padding-right: 20px;
+  }
+  
+  h1 { font-size: 1.8rem; } /* Títulos más amigables en móvil */
+}
+@keyframes scan {
+  0% { top: 0; }
+  50% { top: 100%; }
+  100% { top: 0; }
+}
+/* Animaciones */
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
