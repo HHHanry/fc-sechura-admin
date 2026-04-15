@@ -55,9 +55,10 @@ const Navbar = () => {
         `}
       </style>
       
+      {/* SE ELIMINÓ 'sticky-top' DE AQUÍ ABAJO */}
       <nav 
         ref={navbarRef} 
-        className="navbar navbar-expand-lg sticky-top hide-on-print navbar-glass" 
+        className="navbar navbar-expand-lg hide-on-print navbar-glass" 
         style={{ padding: '0.8rem 0', zIndex: 1100 }}
       >
         <div className="container">
@@ -115,7 +116,6 @@ const Navbar = () => {
             {/* ==========================================
                 3. ZONA DERECHA: PERFIL Y ACCIONES
                 ========================================== */}
-            {/* El border-top solo aparece en celular para separar el menú del perfil */}
             <div className="d-flex align-items-center justify-content-center gap-3 pb-3 pb-lg-0 pt-3 pt-lg-0 border-top border-light border-opacity-10 mt-2 mt-lg-0 border-lg-0">
               
               {/* Píldora de Perfil */}
@@ -142,4 +142,4 @@ const Navbar = () => {
   );
 };
 
-export default Navbar;  
+export default Navbar;
