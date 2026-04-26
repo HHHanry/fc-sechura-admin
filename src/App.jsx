@@ -14,6 +14,7 @@ import Historial from './pages/Historial';
 import RegistrarPagos from './pages/RegistrarPagos';
 import VerPagos from './pages/VerPagos';
 import DetalleAlumno from './pages/DetalleAlumno';
+import CargaMasiva from './pages/CargaMasiva'; // <-- SCRIPT TEMPORAL IMPORTADO
 
 // === TRUCO PARA OCULTAR EL NAVBAR EN EL LOGIN ===
 // Creamos un pequeño componente que envuelve todo el contenido
@@ -38,6 +39,9 @@ const AppContent = () => {
         <Route path="/registrar-pago" element={<ProtectedRoute><RegistrarPagos /></ProtectedRoute>} />
         <Route path="/ver-pagos" element={<ProtectedRoute><VerPagos /></ProtectedRoute>} />
         <Route path="/perfil-alumno" element={<ProtectedRoute><DetalleAlumno /></ProtectedRoute>} />
+        
+        {/* RUTA TEMPORAL PARA SUBIR DATOS */}
+        <Route path="/cargamasiva" element={<ProtectedRoute><CargaMasiva /></ProtectedRoute>} />
       </Routes>
     </div>
   );
