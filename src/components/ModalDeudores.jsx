@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 const ModalDeudores = ({ isOpen, onClose, alumnos, deudasExtras }) => {
   const navigate = useNavigate();
   const [filtroCategoria, setFiltroCategoria] = useState('Todas');
+  const [filtroDistrito, setFiltroDistrito] = useState('Todos'); // <-- NUEVO ESTADO
 
   if (!isOpen) return null;
 
@@ -11,7 +12,10 @@ const ModalDeudores = ({ isOpen, onClose, alumnos, deudasExtras }) => {
   const d = new Date();
   const hoyLocal = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   
-  const PRECIO_MENSUALIDAD = 60; // Monto estimado para proyectar la deuda total
+  const PRECIO_MENSUALIDAD = 65; // <-- ACTUALIZADO A 65 SOLES
+
+  // Extraer distritos únicos para el filtro
+  const distritosExistentes = ['Todos', ...new Set(alumnos.map(a => a.distrito).filter(d => d))];
 
   const listaDeudores = alumnos.map(alumno => {
     const vencimiento = alumno.vencimientoMensualidad || '2000-01-01';
@@ -49,9 +53,10 @@ const ModalDeudores = ({ isOpen, onClose, alumnos, deudasExtras }) => {
     };
   }).filter(Boolean); // Eliminamos los nulos (los que están al día)
 
-  // Filtrado por categoría
+  // === APLICAR FILTROS (Categoría y Distrito) ===
   const deudoresFiltrados = listaDeudores
     .filter(a => filtroCategoria === 'Todas' || a.categoria === filtroCategoria)
+    .filter(a => filtroDistrito === 'Todos' || a.distrito === filtroDistrito) // <-- FILTRO DE DISTRITO
     .sort((a, b) => b.montoTotalAdeudado - a.montoTotalAdeudado); // Ordenar por los que deben más
 
   const totalProyectado = deudoresFiltrados.reduce((sum, a) => sum + a.montoTotalAdeudado, 0);
@@ -79,7 +84,7 @@ const ModalDeudores = ({ isOpen, onClose, alumnos, deudasExtras }) => {
       </style></head>
       <body>
         <div class="header">
-          <div><h2 style="margin:0; color:#dc3545; font-weight:900;">FC SECHURA</h2><p style="margin:0; font-weight:bold;">REPORTE DE MOROSIDAD Y COBRANZAS</p></div>
+          <div><h2 style="margin:0; color:#dc3545; font-weight:900;">FC SECHURA</h2><p style="margin:0; font-weight:bold;">REPORTE DE COBRANZAS (${filtroDistrito === 'Todos' ? 'GENERAL' : filtroDistrito.toUpperCase()})</p></div>
           <div style="text-align:right;"><p style="margin:0; font-size:12px;">Fecha: ${hoyLocal}</p><h4 style="margin:0;">Deuda Proyectada: S/ ${totalProyectado.toFixed(2)}</h4></div>
         </div>
         ${contenidoHTML}
@@ -90,138 +95,156 @@ const ModalDeudores = ({ isOpen, onClose, alumnos, deudasExtras }) => {
   };
 
   return (
-    <div className="modal-overlay d-flex align-items-center justify-content-center" style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.6)' }} onClick={onClose}>
+    <div className="modal-overlay d-flex align-items-center justify-content-center px-2 px-md-0" style={{ zIndex: 1050, backgroundColor: 'rgba(0,0,0,0.6)' }} onClick={onClose}>
       
-      <div className="bg-white rounded-4 shadow-lg overflow-hidden d-flex flex-column animate__animated animate__fadeInUp" style={{ width: '95%', maxWidth: '1000px', maxHeight: '90vh' }} onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white rounded-4 shadow-lg overflow-hidden d-flex flex-column animate__animated animate__fadeInUp" style={{ width: '100%', maxWidth: '1000px', maxHeight: '90vh' }} onClick={(e) => e.stopPropagation()}>
         
-        {/* HEADER DEL MODAL */}
-        <div className="bg-danger p-4 text-white d-flex justify-content-between align-items-center">
+        {/* HEADER DEL MODAL (Ajustado para móvil) */}
+        <div className="bg-danger p-3 p-md-4 text-white d-flex justify-content-between align-items-center">
           <div className="d-flex align-items-center">
-            <div className="bg-white text-danger rounded-circle d-flex align-items-center justify-content-center me-3 shadow" style={{ width: '50px', height: '50px' }}>
-              <i className="fas fa-hand-holding-usd fs-4"></i>
+            <div className="bg-white text-danger rounded-circle d-flex align-items-center justify-content-center me-2 me-md-3 shadow flex-shrink-0" style={{ width: '40px', height: '40px', minWidth: '40px' }}>
+              <i className="fas fa-hand-holding-usd fs-5"></i>
             </div>
             <div>
-              <h4 className="fw-black mb-0 text-uppercase tracking-wider">Central de Riesgo y Cobranzas</h4>
-              <p className="mb-0 small fw-medium opacity-75">Panel de auditoría de pagos atrasados y deudas de tienda.</p>
+              <h5 className="fw-black mb-0 text-uppercase tracking-wider fs-6 fs-md-4">Riesgo & Cobranzas</h5>
+              <p className="mb-0 small fw-medium opacity-75 d-none d-sm-block">Panel de auditoría de pagos y deudas.</p>
             </div>
           </div>
-          <button className="btn btn-outline-light border-0 rounded-circle" onClick={onClose}><i className="fas fa-times fs-4"></i></button>
+          <button className="btn btn-sm btn-outline-light border-0 rounded-circle" onClick={onClose}><i className="fas fa-times fs-5"></i></button>
         </div>
 
-        {/* DASHBOARD Y FILTROS */}
-        <div className="p-4 border-bottom bg-light">
+        {/* DASHBOARD Y FILTROS (Sistema de Grillas Responsive) */}
+        <div className="p-3 p-md-4 border-bottom bg-light">
           <div className="row g-3 align-items-center">
-            <div className="col-md-4">
-              <div className="card border-danger border-opacity-25 shadow-sm">
-                <div className="card-body p-3 d-flex justify-content-between align-items-center">
+            {/* Tarjeta Déficit */}
+            <div className="col-12 col-sm-6 col-md-4">
+              <div className="card border-danger border-opacity-25 shadow-sm h-100">
+                <div className="card-body p-2 p-md-3 d-flex justify-content-between align-items-center">
                   <div>
-                    <span className="small fw-bold text-danger text-uppercase">Déficit Estimado</span>
-                    <h3 className="fw-black text-dark mb-0">S/ {totalProyectado.toFixed(2)}</h3>
+                    <span className="small fw-bold text-danger text-uppercase" style={{fontSize:'0.75rem'}}>Déficit Estimado</span>
+                    <h4 className="fw-black text-dark mb-0 fs-5 fs-md-3">S/ {totalProyectado.toFixed(2)}</h4>
                   </div>
                   <i className="fas fa-chart-line fa-2x text-danger opacity-25"></i>
                 </div>
               </div>
             </div>
-            <div className="col-md-4">
-              <div className="card border-warning border-opacity-50 shadow-sm">
-                <div className="card-body p-3 d-flex justify-content-between align-items-center">
+            
+            {/* Tarjeta Deudores */}
+            <div className="col-12 col-sm-6 col-md-3">
+              <div className="card border-warning border-opacity-50 shadow-sm h-100">
+                <div className="card-body p-2 p-md-3 d-flex justify-content-between align-items-center">
                   <div>
-                    <span className="small fw-bold text-warning text-dark text-uppercase">Total Deudores</span>
-                    <h3 className="fw-black text-dark mb-0">{deudoresFiltrados.length} Alumnos</h3>
+                    <span className="small fw-bold text-warning text-dark text-uppercase" style={{fontSize:'0.75rem'}}>Deudores</span>
+                    <h4 className="fw-black text-dark mb-0 fs-5 fs-md-3">{deudoresFiltrados.length}</h4>
                   </div>
                   <i className="fas fa-users fa-2x text-warning opacity-50"></i>
                 </div>
               </div>
             </div>
-            <div className="col-md-4">
-              <label className="form-label small fw-bold text-muted mb-1">Filtrar por Categoría</label>
-              <div className="d-flex gap-2">
-                <select className="form-select border-2 shadow-sm fw-bold text-secondary" value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
-                  <option value="Todas">Todas las Categorías</option>
+
+            {/* Controles de Filtro (Se adaptan a móvil) */}
+            <div className="col-12 col-md-5">
+              <label className="form-label small fw-bold text-muted mb-1 d-none d-md-block">Filtros de Búsqueda</label>
+              <div className="d-flex flex-wrap flex-sm-nowrap gap-2">
+                <select className="form-select form-select-sm border-2 shadow-sm fw-bold text-secondary flex-grow-1" value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
+                  <option value="Todas">Categorías</option>
                   {['6', '8', '10', '12', '13', '15', 'Juvenil'].map(c => <option key={c} value={c}>Cat. {c}</option>)}
                 </select>
-                <button className="btn btn-danger fw-bold shadow-sm rounded-3" title="Exportar a PDF" onClick={imprimirReporteMorosos}>
-                  <i className="fas fa-file-pdf"></i>
+                
+                <select className="form-select form-select-sm border-2 shadow-sm fw-bold text-secondary flex-grow-1" value={filtroDistrito} onChange={(e) => setFiltroDistrito(e.target.value)}>
+                  {distritosExistentes.map(dist => (
+                    <option key={dist} value={dist}>{dist === 'Todos' ? 'Distritos' : dist}</option>
+                  ))}
+                </select>
+
+                <button className="btn btn-sm btn-danger fw-bold shadow-sm rounded-3 px-3 flex-shrink-0" title="Exportar a PDF" onClick={imprimirReporteMorosos}>
+                  <i className="fas fa-print"></i>
                 </button>
               </div>
             </div>
           </div>
         </div>
 
-        {/* TABLA DE DEUDORES */}
-        <div className="p-0 overflow-auto bg-white" style={{ flexGrow: 1 }} id="area-impresion-morosos">
-          <table className="table table-hover align-middle mb-0">
-            <thead className="bg-white sticky-top" style={{ zIndex: 1, boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
-              <tr>
-                <th className="py-3 ps-4 text-muted small fw-bold text-uppercase border-bottom-0">Alumno / Apoderado</th>
-                <th className="py-3 text-muted small fw-bold text-center text-uppercase border-bottom-0">Categoría</th>
-                <th className="py-3 text-muted small fw-bold text-uppercase border-bottom-0">Conceptos Pendientes</th>
-                <th className="py-3 text-muted small fw-bold text-end text-uppercase border-bottom-0">Deuda Est.</th>
-                <th className="py-3 pe-4 text-muted small fw-bold text-center text-uppercase border-bottom-0 action-buttons btn-no-print">Gestión</th>
-              </tr>
-            </thead>
-            <tbody>
-              {deudoresFiltrados.length === 0 ? (
-                <tr><td colSpan="5" className="text-center py-5 text-muted fw-bold"><i className="fas fa-medal fa-3x mb-3 text-success opacity-50"></i><br/>¡Excelente! No hay alumnos morosos en esta categoría.</td></tr>
-              ) : (
-                deudoresFiltrados.map((a) => {
-                  // Link de WhatsApp Inteligente
-                  const numLimpio = a.celular ? String(a.celular).replace(/\D/g, '') : '';
-                  const msj = `Hola, te escribimos de *FC Sechura*. Queríamos recordarte que el alumno *${a.nombre} ${a.apellido}* presenta un saldo pendiente en el sistema por S/ ${a.montoTotalAdeudado.toFixed(2)}. Por favor, acércate a regularizarlo. ¡Gracias!`;
-                  const linkWa = numLimpio.length >= 9 ? `https://wa.me/51${numLimpio}?text=${encodeURIComponent(msj)}` : null;
+        {/* TABLA DE DEUDORES (Con Table-Responsive) */}
+        <div className="p-0 bg-white" style={{ flexGrow: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }} id="area-impresion-morosos">
+          <div className="table-responsive h-100 w-100">
+            <table className="table table-hover align-middle mb-0" style={{ minWidth: '700px' }}>
+              <thead className="bg-white sticky-top" style={{ zIndex: 1, boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
+                <tr>
+                  <th className="py-3 ps-3 ps-md-4 text-muted small fw-bold text-uppercase border-bottom-0">Alumno / Datos</th>
+                  <th className="py-3 text-muted small fw-bold text-center text-uppercase border-bottom-0">Cat.</th>
+                  <th className="py-3 text-muted small fw-bold text-uppercase border-bottom-0">Conceptos Pendientes</th>
+                  <th className="py-3 text-muted small fw-bold text-end text-uppercase border-bottom-0">Deuda Est.</th>
+                  <th className="py-3 pe-3 pe-md-4 text-muted small fw-bold text-center text-uppercase border-bottom-0 action-buttons btn-no-print">Gestión</th>
+                </tr>
+              </thead>
+              <tbody>
+                {deudoresFiltrados.length === 0 ? (
+                  <tr><td colSpan="5" className="text-center py-5 text-muted fw-bold"><i className="fas fa-medal fa-3x mb-3 text-success opacity-50"></i><br/>¡Excelente! No hay alumnos morosos.</td></tr>
+                ) : (
+                  deudoresFiltrados.map((a) => {
+                    const numLimpio = a.celular ? String(a.celular).replace(/\D/g, '') : '';
+                    const msj = `Hola, te escribimos de *FC Sechura*. Queríamos recordarte que el alumno *${a.nombre} ${a.apellido}* presenta un saldo pendiente en el sistema por S/ ${a.montoTotalAdeudado.toFixed(2)}. Por favor, acércate a regularizarlo. ¡Gracias!`;
+                    const linkWa = numLimpio.length >= 9 ? `https://wa.me/51${numLimpio}?text=${encodeURIComponent(msj)}` : null;
 
-                  return (
-                    <tr key={a.id}>
-                      <td className="ps-4">
-                        <div className="fw-black text-dark">{a.nombre} {a.apellido}</div>
-                        <div className="small text-muted font-monospace mt-1"><i className="fas fa-user-shield me-1"></i>{a.apoderado || 'Sin apoderado'} {a.celular ? `(${a.celular})` : ''}</div>
-                      </td>
-                      <td className="text-center">
-                        <span className="badge bg-light text-dark border border-secondary px-3 py-1 rounded-pill">Cat. {a.categoria}</span>
-                      </td>
-                      <td>
-                        <div className="d-flex flex-column gap-1">
-                          {a.debeMes && (
-                            <span className="badge bg-danger bg-opacity-10 text-danger border border-danger text-start px-2 py-1 w-auto" style={{maxWidth:'max-content'}}>
-                              <i className="fas fa-calendar-times me-1"></i> Mensualidad (Atraso: {a.diasAtraso} días)
-                            </span>
-                          )}
-                          {a.deudasDelAlumno.map(d => (
-                            <span key={d.id} className="badge bg-warning bg-opacity-10 text-dark border border-warning text-start px-2 py-1 w-auto" style={{maxWidth:'max-content'}}>
-                              <i className="fas fa-shopping-basket me-1 text-warning"></i> {d.concepto} (S/ {d.monto})
-                            </span>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="text-end fw-black text-danger fs-5">
-                        S/ {a.montoTotalAdeudado.toFixed(2)}
-                      </td>
-                      <td className="pe-4 text-center action-buttons btn-no-print">
-                        <div className="d-flex justify-content-center gap-2">
-                          {linkWa ? (
-                            <a href={linkWa} target="_blank" rel="noreferrer" className="btn btn-sm btn-success rounded-circle shadow-sm" title="Notificar por WhatsApp">
-                              <i className="fab fa-whatsapp"></i>
-                            </a>
-                          ) : (
-                            <button className="btn btn-sm btn-secondary rounded-circle shadow-sm opacity-50" disabled title="Sin número registrado">
-                              <i className="fab fa-whatsapp"></i>
+                    return (
+                      <tr key={a.id}>
+                        <td className="ps-3 ps-md-4">
+                          <div className="fw-black text-dark text-truncate" style={{maxWidth: '200px'}}>{a.nombre} {a.apellido}</div>
+                          {/* Agregado el Distrito visualmente en la tabla */}
+                          <div className="small text-muted font-monospace mt-1 text-truncate" style={{maxWidth: '200px'}}>
+                            <i className="fas fa-map-marker-alt text-danger me-1"></i>{a.distrito || 'N/R'} <br className="d-block d-md-none" />
+                            <span className="d-none d-md-inline"> | </span>
+                            <i className="fas fa-user-shield text-primary mx-1"></i>{a.apoderado || 'N/R'}
+                          </div>
+                        </td>
+                        <td className="text-center">
+                          <span className="badge bg-light text-dark border border-secondary px-2 py-1 rounded-pill">C. {a.categoria}</span>
+                        </td>
+                        <td>
+                          <div className="d-flex flex-column gap-1">
+                            {a.debeMes && (
+                              <span className="badge bg-danger bg-opacity-10 text-danger border border-danger text-start px-2 py-1 text-wrap text-md-nowrap" style={{lineHeight: '1.2'}}>
+                                <i className="fas fa-calendar-times me-1"></i> Mensualidad (Atraso: {a.diasAtraso}d)
+                              </span>
+                            )}
+                            {a.deudasDelAlumno.map(d => (
+                              <span key={d.id} className="badge bg-warning bg-opacity-10 text-dark border border-warning text-start px-2 py-1 text-wrap text-md-nowrap" style={{lineHeight: '1.2'}}>
+                                <i className="fas fa-shopping-basket me-1 text-warning"></i> {d.concepto} (S/{d.monto})
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="text-end fw-black text-danger fs-6 fs-md-5 text-nowrap">
+                          S/ {a.montoTotalAdeudado.toFixed(2)}
+                        </td>
+                        <td className="pe-3 pe-md-4 text-center action-buttons btn-no-print">
+                          <div className="d-flex justify-content-center gap-1 gap-md-2">
+                            {linkWa ? (
+                              <a href={linkWa} target="_blank" rel="noreferrer" className="btn btn-sm btn-success rounded-circle shadow-sm flex-shrink-0" title="Notificar por WhatsApp">
+                                <i className="fab fa-whatsapp"></i>
+                              </a>
+                            ) : (
+                              <button className="btn btn-sm btn-secondary rounded-circle shadow-sm opacity-50 flex-shrink-0" disabled title="Sin número registrado">
+                                <i className="fab fa-whatsapp"></i>
+                              </button>
+                            )}
+                            <button className="btn btn-sm btn-danger fw-bold rounded-pill shadow-sm px-2 px-md-3" onClick={() => { onClose(); navigate('registrar-pago'); }}>
+                              Cobrar
                             </button>
-                          )}
-                          <button className="btn btn-sm btn-danger fw-bold rounded-pill shadow-sm px-3" onClick={() => { onClose(); navigate('registrar-pago'); }}>
-                            Cobrar
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })
-              )}
-            </tbody>
-          </table>
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* FOOTER DEL MODAL */}
-        <div className="p-3 bg-light border-top text-center btn-no-print">
+        <div className="p-3 bg-light border-top text-center btn-no-print mt-auto">
           <button className="btn btn-secondary fw-bold px-5 rounded-pill shadow-sm" onClick={onClose}>Cerrar Panel</button>
         </div>
 
