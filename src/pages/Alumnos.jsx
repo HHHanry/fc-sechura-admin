@@ -13,11 +13,9 @@ const Alumnos = () => {
 
   const hoy = obtenerFechaHoy();
 
-  // Función para sumar 1 mes exacto a una fecha (Formato YYYY-MM-DD)
   const calcularProximoVencimiento = (fechaBase) => {
     if (!fechaBase) return hoy;
     const fecha = new Date(fechaBase);
-    // Le sumamos un mes asegurándonos que no haya desfase por la zona horaria
     fecha.setUTCMonth(fecha.getUTCMonth() + 1); 
     return fecha.toISOString().split('T')[0];
   };
@@ -30,6 +28,7 @@ const Alumnos = () => {
   
   const [busqueda, setBusqueda] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState('Todas');
+  const [filtroDistrito, setFiltroDistrito] = useState('Todos'); // <-- NUEVO ESTADO
   const [ordenarPor, setOrdenarPor] = useState('reciente');
   
   const [cargando, setCargando] = useState(false); 
@@ -38,9 +37,9 @@ const Alumnos = () => {
   // === ESTADO INICIAL DEL FORMULARIO ===
   const [formData, setFormData] = useState({
     nombre: '', apellido: '', edad: '', categoria: '6', dni: '',
-    fechaNacimiento: '', colegio: '', celular: '', distrito: 'Sechura', direccion: '', apoderado: '', foto: null,
+    fechaNacimiento: '', colegio: '', celular: '', distrito: 'Sechura', ciudad: 'Sechura', // <-- Añadido Ciudad
+    direccion: '', apoderado: '', foto: null,
     fechaInscripcion: hoy, 
-    // CORRECCIÓN: Nace con 1 mes de gracia desde su inscripción
     vencimientoMensualidad: calcularProximoVencimiento(hoy) 
   });
 
@@ -55,6 +54,9 @@ const Alumnos = () => {
     };
     getAlumnos();
   }, []);
+
+  // === LÓGICA PARA EXTRAER DISTRITOS ÚNICOS PARA EL FILTRO ===
+  const distritosExistentes = ['Todos', ...new Set(alumnos.map(a => a.distrito).filter(d => d))];
 
   const calcularEdad = (fechaNac) => {
     if (!fechaNac) return '';
@@ -71,16 +73,8 @@ const Alumnos = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     let nuevosDatos = { ...formData, [name]: value };
-    
-    if (name === 'fechaNacimiento') {
-      nuevosDatos.edad = calcularEdad(value);
-    }
-    
-    // CORRECCIÓN DE LA REGLA: Si cambias la fecha de inscripción, el vencimiento será 1 MES DESPUÉS.
-    if (name === 'fechaInscripcion' && !modoEdicion) {
-      nuevosDatos.vencimientoMensualidad = calcularProximoVencimiento(value);
-    }
-    
+    if (name === 'fechaNacimiento') nuevosDatos.edad = calcularEdad(value);
+    if (name === 'fechaInscripcion' && !modoEdicion) nuevosDatos.vencimientoMensualidad = calcularProximoVencimiento(value);
     setFormData(nuevosDatos);
   };
   
@@ -95,6 +89,7 @@ const Alumnos = () => {
   const iniciarEdicion = (alumno) => {
     setFormData({
       ...alumno,
+      ciudad: alumno.ciudad || 'Sechura', // Fallback por si no existía
       fechaInscripcion: alumno.fechaInscripcion || hoy,
       vencimientoMensualidad: alumno.vencimientoMensualidad || calcularProximoVencimiento(hoy)
     });
@@ -107,7 +102,7 @@ const Alumnos = () => {
   const resetFormulario = () => {
     setFormData({ 
       nombre: '', apellido: '', edad: '', categoria: '6', dni: '', fechaNacimiento: '', 
-      colegio: '', celular: '', distrito: 'Sechura', direccion: '', apoderado: '', foto: null,
+      colegio: '', celular: '', distrito: 'Sechura', ciudad: 'Sechura', direccion: '', apoderado: '', foto: null,
       fechaInscripcion: hoy, vencimientoMensualidad: calcularProximoVencimiento(hoy) 
     });
     setArchivoFoto(null);
@@ -127,45 +122,34 @@ const Alumnos = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setCargando(true);
-    
     try {
       if (!modoEdicion) {
         const dniExiste = alumnos.some(a => a.dni === formData.dni);
         if (dniExiste) {
-          alert("¡Atención! Este DNI ya está registrado en la base de datos.");
+          alert("¡Atención! Este DNI ya está registrado.");
           setCargando(false);
           return;
         }
       }
-
       let urlFotoFinal = formData.foto; 
       if (archivoFoto) {
         if (archivoFoto.size > 800000) {
-          alert("¡Pausa! La foto es muy pesada (máximo 800KB). Por favor, elige una más ligera.");
+          alert("¡Pausa! La foto es muy pesada (máximo 800KB).");
           setCargando(false);
           return;
         }
         urlFotoFinal = await convertirABase64(archivoFoto);
       }
-
       if (modoEdicion) {
         const alumnoDoc = doc(db, 'alumnos', formData.id);
         const datosAActualizar = { ...formData, foto: urlFotoFinal }; 
         delete datosAActualizar.id; 
-        
         await updateDoc(alumnoDoc, datosAActualizar);
         setAlumnos(alumnos.map(a => a.id === formData.id ? { ...datosAActualizar, id: formData.id } : a));
       } else {
         const qrGenerado = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${formData.dni}`;
-        
-        const nuevoAlumnoData = { 
-          ...formData, 
-          foto: urlFotoFinal, 
-          qr: qrGenerado,
-          createdAt: new Date()
-        };
+        const nuevoAlumnoData = { ...formData, foto: urlFotoFinal, qr: qrGenerado, createdAt: new Date() };
         delete nuevoAlumnoData.id; 
-        
         const docRef = await addDoc(alumnosCollectionRef, nuevoAlumnoData);
         setAlumnos([...alumnos, { ...nuevoAlumnoData, id: docRef.id }]);
       }
@@ -184,9 +168,7 @@ const Alumnos = () => {
       await deleteDoc(alumnoDoc);
       setAlumnos(alumnos.filter(a => a.id !== alumnoAEliminar.id));
       setAlumnoAEliminar(null);
-    } catch (error) {
-      console.error("Error al eliminar: ", error);
-    }
+    } catch (error) { console.error("Error al eliminar: ", error); }
   };
 
   const cerrarCarnet = () => setAlumnoSeleccionado(null);
@@ -231,7 +213,8 @@ const Alumnos = () => {
       const termino = busqueda.toLowerCase();
       const coincideBusqueda = alumno.nombre.toLowerCase().includes(termino) || alumno.apellido.toLowerCase().includes(termino) || alumno.dni.includes(termino);
       const coincideCategoria = filtroCategoria === 'Todas' || alumno.categoria === filtroCategoria;
-      return coincideBusqueda && coincideCategoria;
+      const coincideDistrito = filtroDistrito === 'Todos' || alumno.distrito === filtroDistrito; // <-- FILTRO APLICADO
+      return coincideBusqueda && coincideCategoria && coincideDistrito;
     })
     .sort((a, b) => {
       if (ordenarPor === 'az') return a.nombre.localeCompare(b.nombre);
@@ -275,7 +258,7 @@ const Alumnos = () => {
                     <input type="text" className="form-control shadow-sm" name="apellido" value={formData.apellido} onChange={handleChange} required />
                   </div>
                   <div className="col-md-4">
-                    <label className="form-label fw-bold small text-muted">DNI (Código QR)</label>
+                    <label className="form-label fw-bold small text-muted">DNI</label>
                     <input type="text" className="form-control shadow-sm" name="dni" value={formData.dni} onChange={handleChange} required maxLength="8" disabled={modoEdicion} />
                   </div>
                   <div className="col-md-4">
@@ -288,18 +271,22 @@ const Alumnos = () => {
                   </div>
                 </div>
 
-                <h6 className="fw-bold text-secondary mb-3 border-bottom pb-2">2. Residencia y Contacto</h6>
+                <h6 className="fw-bold text-secondary mb-3 border-bottom pb-2">2. Residencia y Ubicación</h6>
                 <div className="row g-3 mb-4">
                   <div className="col-md-3">
-                    <label className="form-label fw-bold small text-muted">Celular (Apoderado)</label>
+                    <label className="form-label fw-bold small text-muted">Celular</label>
                     <input type="text" className="form-control shadow-sm" name="celular" value={formData.celular} onChange={handleChange} required />
                   </div>
                   <div className="col-md-3">
-                    <label className="form-label fw-bold small text-muted">Distrito</label>
-                    <input type="text" className="form-control shadow-sm" name="distrito" value={formData.distrito} onChange={handleChange} required />
+                    <label className="form-label fw-bold small text-muted">Distrito (Filtro)</label>
+                    <input type="text" className="form-control shadow-sm" name="distrito" placeholder="Ej: Bernal" value={formData.distrito} onChange={handleChange} required />
                   </div>
-                  <div className="col-md-6">
-                    <label className="form-label fw-bold small text-muted">Dirección Física</label>
+                  <div className="col-md-3">
+                    <label className="form-label fw-bold small text-muted">Ciudad / Provincia</label>
+                    <input type="text" className="form-control shadow-sm" name="ciudad" value={formData.ciudad} onChange={handleChange} required />
+                  </div>
+                  <div className="col-md-3">
+                    <label className="form-label fw-bold small text-muted">Dirección</label>
                     <input type="text" className="form-control shadow-sm" name="direccion" value={formData.direccion} onChange={handleChange} required />
                   </div>
                 </div>
@@ -307,39 +294,36 @@ const Alumnos = () => {
                 <h6 className="fw-bold text-secondary mb-3 border-bottom pb-2">3. Académico y Responsable</h6>
                 <div className="row g-3 mb-4">
                   <div className="col-md-5">
-                    <label className="form-label fw-bold small text-muted">Institución Educativa</label>
+                    <label className="form-label fw-bold small text-muted">IE / Colegio</label>
                     <input type="text" className="form-control shadow-sm" name="colegio" value={formData.colegio} onChange={handleChange} />
                   </div>
                   <div className="col-md-4">
-                    <label className="form-label fw-bold small text-muted">Categoría Deportiva</label>
+                    <label className="form-label fw-bold small text-muted">Categoría</label>
                     <select className="form-select shadow-sm" name="categoria" value={formData.categoria} onChange={handleChange}>
                       {['6', '8', '10', '12', '13', '14', '15', 'Juvenil'].map(c => <option key={c} value={c}>Cat. {c}</option>)}
                     </select>
                   </div>
                   <div className="col-md-3">
-                    <label className="form-label fw-bold small text-muted">Nombre del Apoderado</label>
+                    <label className="form-label fw-bold small text-muted">Apoderado</label>
                     <input type="text" className="form-control shadow-sm" name="apoderado" value={formData.apoderado} onChange={handleChange} required />
                   </div>
                 </div>
 
-                <h6 className="fw-bold text-primary mb-3 border-bottom pb-2">4. Parámetros de Facturación</h6>
-                <div className="row g-3 mb-4 bg-primary bg-opacity-10 p-3 rounded-3 border border-primary border-opacity-25">
+                <h6 className="fw-bold text-primary mb-3 border-bottom pb-2">4. Facturación</h6>
+                <div className="row g-3 mb-4 bg-primary bg-opacity-10 p-3 rounded-3">
                   <div className="col-md-6">
-                    <label className="form-label fw-bold text-primary small">Fecha de Inscripción</label>
+                    <label className="form-label fw-bold text-primary small">Inscripción</label>
                     <input type="date" className="form-control border-primary shadow-sm" name="fechaInscripcion" value={formData.fechaInscripcion} onChange={handleChange} required />
-                    {!modoEdicion && <small className="text-muted d-block mt-2 fw-medium"><i className="fas fa-info-circle me-1"></i> El sistema le dará 1 mes de cobertura. Si la fecha es de un mes anterior, aparecerá PENDIENTE automáticamente.</small>}
                   </div>
                   <div className="col-md-6">
-                    <label className="form-label fw-bold text-danger small">Próximo Vencimiento (Corte)</label>
+                    <label className="form-label fw-bold text-danger small">Corte de Mensualidad</label>
                     <input type="date" className="form-control border-danger fw-bold shadow-sm" name="vencimientoMensualidad" value={formData.vencimientoMensualidad} onChange={handleChange} required />
-                    <small className="text-muted d-block mt-2 fw-medium"><i className="fas fa-cogs me-1"></i> Calculado un mes después de la inscripción. Este campo avanza al pagar en Caja.</small>
                   </div>
                 </div>
 
-                <h6 className="fw-bold text-secondary mb-3 border-bottom pb-2">5. Perfil Biométrico (Foto)</h6>
                 <div className="row g-3">
                   <div className="col-md-12">
-                    <label className="form-label fw-bold small text-muted">Adjuntar Fotografía (Límite 800KB)</label>
+                    <label className="form-label fw-bold small text-muted">Foto del Jugador</label>
                     <input type="file" className="form-control shadow-sm border-2" accept="image/*" onChange={handleFileChange} /> 
                   </div>
                 </div>
@@ -347,7 +331,7 @@ const Alumnos = () => {
                 <div className="mt-5 text-end border-top pt-4">
                   <button type="submit" disabled={cargando} className={`btn btn-lg px-5 fw-bold text-white rounded-pill shadow ${modoEdicion ? 'btn-warning' : 'btn-primary'}`}>
                     {cargando ? <span className="spinner-border spinner-border-sm me-2"></span> : <i className={modoEdicion ? "fas fa-sync-alt me-2" : "fas fa-save me-2"}></i>}
-                    {modoEdicion ? 'Actualizar Ficha' : 'Generar Registro'}
+                    {modoEdicion ? 'Actualizar' : 'Registrar'}
                   </button>
                 </div>
               </form>
@@ -357,32 +341,35 @@ const Alumnos = () => {
           <>
             <div className="card border-0 shadow-sm mb-4 bg-white rounded-4 p-3">
               <div className="row g-3 align-items-center">
-                <div className="col-12 col-md-5">
+                <div className="col-12 col-md-4">
                   <div className="input-group">
                     <span className="input-group-text bg-light border-0 text-muted"><i className="fas fa-search"></i></span>
-                    <input type="text" className="form-control bg-light border-0 shadow-none ps-2" placeholder="Buscar por nombre, apellido o DNI..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
+                    <input type="text" className="form-control bg-light border-0 shadow-none ps-2" placeholder="Nombre o DNI..." value={busqueda} onChange={(e) => setBusqueda(e.target.value)} />
                   </div>
                 </div>
-                <div className="col-12 col-sm-6 col-md-3">
-                  <div className="d-flex align-items-center">
-                    <i className="fas fa-filter text-muted me-2"></i>
-                    <select className="form-select border-0 bg-light fw-bold text-secondary shadow-sm" value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
-                      <option value="Todas">Todas las Categorías</option>
-                      {['6', '8', '10', '12', '13', '14', '15', 'Juvenil'].map(c => <option key={c} value={c}>Cat. {c}</option>)}
+                <div className="col-6 col-md-2">
+                  <select className="form-select border-0 bg-light fw-bold text-secondary shadow-sm" value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
+                    <option value="Todas">Categorías</option>
+                    {['6', '8', '10', '12', '13', '14', '15', 'Juvenil'].map(c => <option key={c} value={c}>Cat. {c}</option>)}
+                  </select>
+                </div>
+                {/* === NUEVO FILTRO DE DISTRITO === */}
+                <div className="col-6 col-md-3">
+                  <div className="d-flex align-items-center bg-light px-2 rounded-3 shadow-sm">
+                    <i className="fas fa-map-marker-alt text-muted me-2"></i>
+                    <select className="form-select border-0 bg-transparent fw-bold text-secondary" value={filtroDistrito} onChange={(e) => setFiltroDistrito(e.target.value)}>
+                      {distritosExistentes.map(dist => (
+                        <option key={dist} value={dist}>{dist === 'Todos' ? 'Todos los Distritos' : dist}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
-                <div className="col-12 col-sm-6 col-md-4">
-                  <div className="d-flex align-items-center justify-content-md-end">
-                    <span className="small fw-bold text-muted me-2 text-nowrap">Ordenar por:</span>
-                    <select className="form-select border-0 bg-light fw-bold shadow-sm" style={{ borderRadius: '10px' }} value={ordenarPor} onChange={(e) => setOrdenarPor(e.target.value)}>
-                      <option value="reciente">Nuevos Ingresos</option>
-                      <option value="az">A - Z</option>
-                      <option value="za">Z - A</option>
-                      <option value="edad_asc">Menores Primero</option>
-                      <option value="edad_desc">Mayores Primero</option>
-                    </select>
-                  </div>
+                <div className="col-12 col-md-3">
+                  <select className="form-select border-0 bg-light fw-bold shadow-sm" value={ordenarPor} onChange={(e) => setOrdenarPor(e.target.value)}>
+                    <option value="reciente">Nuevos</option>
+                    <option value="az">A-Z</option>
+                    <option value="za">Z-A</option>
+                  </select>
                 </div>
               </div>
             </div>
@@ -393,78 +380,55 @@ const Alumnos = () => {
                   <thead className="bg-light border-bottom">
                     <tr>
                       <th className="ps-4 py-3 text-uppercase small fw-bold text-secondary">Jugador</th>
-                      <th className="py-3 text-uppercase small fw-bold text-secondary">DNI</th>
-                      <th className="py-3 text-uppercase small fw-bold text-center text-secondary">Categoría</th>
-                      <th className="py-3 text-uppercase small fw-bold text-center text-secondary">Estado de Cuenta</th>
+                      <th className="py-3 text-uppercase small fw-bold text-secondary">Ubicación</th>
+                      <th className="py-3 text-uppercase small fw-bold text-center text-secondary">Cat.</th>
+                      <th className="py-3 text-uppercase small fw-bold text-center text-secondary">Estado</th>
                       <th className="pe-4 py-3 text-uppercase small fw-bold text-end text-secondary">Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
                     {alumnosProcesados.length === 0 ? (
-                      <tr>
-                        <td colSpan="5" className="text-center py-5 text-muted">
-                          <i className="fas fa-folder-open fa-3x mb-3 opacity-25"></i>
-                          <p className="mb-0 fw-medium">Directorio vacío o sin coincidencias.</p>
-                        </td>
-                      </tr>
+                      <tr><td colSpan="5" className="text-center py-5 text-muted">No hay coincidencias.</td></tr>
                     ) : (
                       alumnosProcesados.map((alumno) => {
                         const d = new Date();
-                        const hoyLocal = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-                        const vencimiento = alumno.vencimientoMensualidad || '2000-01-01';
-                        // La regla se mantiene: si hoy es MAYOR O IGUAL al día de vencimiento, debe.
-                        const estaEnDeuda = hoyLocal >= vencimiento;
-
+                        const hoyL = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                        const estaEnDeuda = hoyL >= (alumno.vencimientoMensualidad || '2000-01-01');
                         return (
                           <tr key={alumno.id}>
                             <td className="ps-4">
                               <div className="d-flex align-items-center">
                                 {alumno.foto ? (
-                                  <img src={alumno.foto} className="rounded-circle me-3 border border-2 border-white shadow-sm" style={{ width: '45px', height: '45px', objectFit: 'cover' }} alt="Foto" />
+                                  <img src={alumno.foto} className="rounded-circle me-3 border shadow-sm" style={{ width: '40px', height: '40px', objectFit: 'cover' }} alt="" />
                                 ) : (
-                                  <div className="rounded-circle me-3 bg-secondary text-white d-flex align-items-center justify-content-center fw-bold shadow-sm" style={{ width: '45px', height: '45px' }}>
-                                    {alumno.nombre.charAt(0)}{alumno.apellido.charAt(0)}
-                                  </div>
+                                  <div className="rounded-circle me-3 bg-secondary text-white d-flex align-items-center justify-content-center fw-bold shadow-sm" style={{ width: '40px', height: '40px' }}>{alumno.nombre.charAt(0)}</div>
                                 )}
                                 <div>
-                                  <div className="fw-black text-dark" style={{ letterSpacing: '-0.3px' }}>{alumno.nombre} {alumno.apellido}</div>
-                                  <div className="small text-muted font-monospace mt-1">Inscrito: {alumno.fechaInscripcion}</div>
+                                  <div className="fw-black text-dark">{alumno.nombre} {alumno.apellido}</div>
+                                  <div className="small text-muted font-monospace">{alumno.dni}</div>
                                 </div>
                               </div>
                             </td>
-                            <td className="text-muted fw-medium font-monospace">{alumno.dni}</td>
+                            {/* === VISUALIZACIÓN DE UBICACIÓN === */}
+                            <td>
+                              <div className="fw-bold text-dark small">{alumno.distrito}</div>
+                              <div className="text-muted" style={{fontSize: '0.65rem'}}>{alumno.ciudad}</div>
+                            </td>
                             <td className="text-center">
-                              <span className="badge rounded-pill px-3 py-2 fw-bold" style={{ backgroundColor: 'var(--fc-celeste)', color: 'var(--fc-azul)' }}>Cat. {alumno.categoria}</span>
+                              <span className="badge rounded-pill px-3 py-2 fw-bold" style={{ backgroundColor: '#e0f2fe', color: '#0369a1' }}>{alumno.categoria}</span>
                             </td>
                             <td className="text-center">
                               {estaEnDeuda ? (
-                                <div className="d-flex flex-column align-items-center">
-                                  <span className="badge bg-danger bg-opacity-10 text-danger border border-danger px-3 py-1 rounded-pill shadow-sm"><i className="fas fa-exclamation-circle me-1"></i> PENDIENTE</span>
-                                  <small className="text-danger fw-bold mt-1" style={{fontSize: '0.70rem'}}>Corte: {alumno.vencimientoMensualidad}</small>
-                                </div>
+                                <span className="badge bg-danger bg-opacity-10 text-danger border border-danger px-3 py-1 rounded-pill">PENDIENTE</span>
                               ) : (
-                                <div className="d-flex flex-column align-items-center">
-                                  <span className="badge bg-success bg-opacity-10 text-success border border-success px-3 py-1 rounded-pill shadow-sm"><i className="fas fa-check-circle me-1"></i> AL DÍA</span>
-                                  <small className="text-muted fw-bold mt-1" style={{fontSize: '0.70rem'}}>Vence: {alumno.vencimientoMensualidad}</small>
-                                </div>
+                                <span className="badge bg-success bg-opacity-10 text-success border border-success px-3 py-1 rounded-pill">AL DÍA</span>
                               )}
                             </td>
-                            
-                            <td className="pe-4">
-                              <div className="d-flex justify-content-end gap-2">
-                                <Link to="/perfil-alumno" state={{ alumno: alumno }} className="btn btn-sm btn-light border shadow-sm text-success" title="Panel Gerencial del Alumno">
-                                  <i className="fas fa-chart-pie"></i>
-                                </Link>
-                                <button className="btn btn-sm btn-light border shadow-sm text-primary" title="Imprimir Carnet" onClick={() => setAlumnoSeleccionado(alumno)}>
-                                  <i className="fas fa-id-card"></i>
-                                </button>
-                                <button className="btn btn-sm btn-light border shadow-sm text-warning" title="Modificar Ficha" onClick={() => iniciarEdicion(alumno)}>
-                                  <i className="fas fa-edit"></i>
-                                </button>
-                                <button className="btn btn-sm btn-light border shadow-sm text-danger" title="Dar de Baja" onClick={() => setAlumnoAEliminar(alumno)}>
-                                  <i className="fas fa-trash-alt"></i>
-                                </button>
-                              </div>
+                            <td className="pe-4 text-end">
+                                <Link to="/perfil-alumno" state={{ alumno: alumno }} className="btn btn-sm btn-light border text-success mx-1"><i className="fas fa-chart-pie"></i></Link>
+                                <button className="btn btn-sm btn-light border text-primary mx-1" onClick={() => setAlumnoSeleccionado(alumno)}><i className="fas fa-id-card"></i></button>
+                                <button className="btn btn-sm btn-light border text-warning mx-1" onClick={() => iniciarEdicion(alumno)}><i className="fas fa-edit"></i></button>
+                                <button className="btn btn-sm btn-light border text-danger mx-1" onClick={() => setAlumnoAEliminar(alumno)}><i className="fas fa-trash-alt"></i></button>
                             </td>
                           </tr>
                         )
@@ -476,8 +440,7 @@ const Alumnos = () => {
             </div>
           </>
         )}
-      </div> 
-
+      </div>
       {/* MODAL ELIMINAR */}
       {alumnoAEliminar && (
         <div className="modal-overlay d-flex align-items-center justify-content-center btn-no-print" style={{ zIndex: 2000 }}>

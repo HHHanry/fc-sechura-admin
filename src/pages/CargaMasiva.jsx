@@ -74,19 +74,14 @@ const CargaMasiva = () => {
     let agregados = 0;
     let errores = 0;
 
-    // Obtener fecha actual para inscripción y vencimiento
     const opciones = { timeZone: 'America/Lima', year: 'numeric', month: '2-digit', day: '2-digit' };
     const partes = new Intl.DateTimeFormat('es-PE', opciones).formatToParts(new Date());
     const hoy = `${partes.find(p => p.type === 'year').value}-${partes.find(p => p.type === 'month').value}-${partes.find(p => p.type === 'day').value}`;
     
-    const fecha = new Date(hoy);
-    fecha.setUTCMonth(fecha.getUTCMonth() + 1); 
-    const vencimiento = fecha.toISOString().split('T')[0];
+    // Nace como moroso al igualar inscripción = vencimiento
+    const vencimiento = hoy; 
 
     for (const jugador of jugadores) {
-      // Función simple para separar nombre y apellido asumiendo que los dos primeros son apellidos si tiene 4 palabras, etc.
-      // Como el formato varía, guardaremos todo en 'apellido' y dejaremos 'nombre' vacío, o puedes ajustarlo luego en el sistema.
-      // Para esta carga, asumimos que el primer nombre de la lista es el Apellido y el resto el Nombre para que se vea decente.
       const partesNombre = jugador.nombreCompleto.split(' ');
       const apellido = partesNombre.length > 1 ? partesNombre[0] : jugador.nombreCompleto;
       const nombre = partesNombre.length > 1 ? partesNombre.slice(1).join(' ') : '';
@@ -96,13 +91,13 @@ const CargaMasiva = () => {
         apellido: apellido,
         celular: jugador.celular,
         posicion: jugador.posicion,
-        // Datos por defecto necesarios para el sistema
-        categoria: '6', // <- Asignando Cat. 6 por defecto (Cámbialo luego en el sistema)
+        categoria: '6', // Cat por defecto
         dni: '',
         edad: '',
         fechaNacimiento: '',
         colegio: '',
-        distrito: 'Sechura',
+        distrito: 'Bernal', // <=== SE INSERTAN COMO DE BERNAL
+        ciudad: 'Sechura',  // <=== CIUDAD BASE
         direccion: '',
         apoderado: '',
         foto: null,
@@ -122,14 +117,14 @@ const CargaMasiva = () => {
     }
 
     setCargando(false);
-    setResultado(`Carga completada. Agregados: ${agregados}. Errores: ${errores}. ¡Ya puedes borrar este componente!`);
+    setResultado(`Carga completada. Agregados: ${agregados}. ¡Todos están como PENDIENTES y del distrito de BERNAL!`);
   };
 
   return (
     <div className="container py-5 text-center mt-5">
       <div className="card shadow-lg p-5 border-0 rounded-4 mx-auto" style={{maxWidth: '600px'}}>
-        <h2 className="fw-black text-primary mb-3">Herramienta de Carga Masiva</h2>
-        <p className="text-muted mb-4">Se van a cargar <strong>{jugadores.length}</strong> jugadores a la base de datos de Firebase.</p>
+        <h2 className="fw-black text-primary mb-3">Herramienta de Carga Masiva (Bernal)</h2>
+        <p className="text-muted mb-4">Se van a cargar <strong>{jugadores.length}</strong> jugadores a la base de datos.</p>
         
         {resultado && (
           <div className={`alert ${cargando ? 'alert-warning' : 'alert-success'} fw-bold mb-4`}>
@@ -145,7 +140,7 @@ const CargaMasiva = () => {
           {cargando ? (
             <><span className="spinner-border spinner-border-sm me-2"></span> Cargando a Firebase...</>
           ) : (
-            <><i className="fas fa-upload me-2"></i> Iniciar Carga Masiva</>
+            <><i className="fas fa-upload me-2"></i> Iniciar Carga (Distrito: Bernal)</>
           )}
         </button>
       </div>
