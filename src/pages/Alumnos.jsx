@@ -37,10 +37,14 @@ const Alumnos = () => {
   // === ESTADO INICIAL DEL FORMULARIO ===
   const [formData, setFormData] = useState({
     nombre: '', apellido: '', edad: '', categoria: '6', dni: '',
-    fechaNacimiento: '', colegio: '', celular: '', distrito: 'Sechura', ciudad: 'Sechura', // <-- Añadido Ciudad
+    fechaNacimiento: '', colegio: '', celular: '', distrito: 'Sechura', ciudad: 'Sechura',
     direccion: '', apoderado: '', foto: null,
     fechaInscripcion: hoy, 
-    vencimientoMensualidad: calcularProximoVencimiento(hoy) 
+    vencimientoMensualidad: calcularProximoVencimiento(hoy),
+    registrarPagoInicial: false, // Switch para activar caja
+    montoPago: '',
+    metodoPago: 'Efectivo',
+    conceptoPago: 'Inscripción y 1ra Mensualidad'
   });
 
   const alumnosCollectionRef = collection(db, 'alumnos');
@@ -119,18 +123,21 @@ const Alumnos = () => {
     });
   };
 
-  const handleSubmit = async (e) => {
+ const handleSubmit = async (e) => {
     e.preventDefault();
     setCargando(true);
     try {
+      
       if (!modoEdicion) {
         const dniExiste = alumnos.some(a => a.dni === formData.dni);
+        
         if (dniExiste) {
           alert("¡Atención! Este DNI ya está registrado.");
           setCargando(false);
           return;
         }
       }
+      
       let urlFotoFinal = formData.foto; 
       if (archivoFoto) {
         if (archivoFoto.size > 800000) {
@@ -140,23 +147,50 @@ const Alumnos = () => {
         }
         urlFotoFinal = await convertirABase64(archivoFoto);
       }
+
       if (modoEdicion) {
+        // ... (Tu código de edición se mantiene igual)
         const alumnoDoc = doc(db, 'alumnos', formData.id);
+        
         const datosAActualizar = { ...formData, foto: urlFotoFinal }; 
+        // Limpiamos datos de pago para no guardarlos en el perfil del alumno
+        delete datosAActualizar.registrarPagoInicial; delete datosAActualizar.montoPago; delete datosAActualizar.metodoPago; delete datosAActualizar.conceptoPago;
         delete datosAActualizar.id; 
+        
         await updateDoc(alumnoDoc, datosAActualizar);
         setAlumnos(alumnos.map(a => a.id === formData.id ? { ...datosAActualizar, id: formData.id } : a));
       } else {
+        // === REGISTRO DE ALUMNO NUEVO ===
         const qrGenerado = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${formData.dni}`;
         const nuevoAlumnoData = { ...formData, foto: urlFotoFinal, qr: qrGenerado, createdAt: new Date() };
+        
+        // Limpiamos los datos temporales de pago antes de guardar al alumno
+        delete nuevoAlumnoData.registrarPagoInicial; delete nuevoAlumnoData.montoPago; delete nuevoAlumnoData.metodoPago; delete nuevoAlumnoData.conceptoPago;
         delete nuevoAlumnoData.id; 
+        
         const docRef = await addDoc(alumnosCollectionRef, nuevoAlumnoData);
         setAlumnos([...alumnos, { ...nuevoAlumnoData, id: docRef.id }]);
+
+        // === REGISTRO DE PAGO (CONEXIÓN CON CAJA) ===
+        if (formData.registrarPagoInicial && formData.montoPago) {
+          const pagosCollectionRef = collection(db, 'pagos');
+          await addDoc(pagosCollectionRef, {
+            alumnoId: docRef.id,
+            alumnoNombre: `${formData.nombre} ${formData.apellido}`,
+            alumnoDni: formData.dni,
+            monto: parseFloat(formData.montoPago),
+            metodo: formData.metodoPago,
+            concepto: formData.conceptoPago,
+            fecha: hoy,
+            tipo: 'Ingreso',
+            createdAt: new Date()
+          });
+        }
       }
       resetFormulario();
     } catch (error) {
       console.error("Error guardando documento: ", error);
-      alert("Hubo un error al guardar en Firebase.");
+      alert("Hubo un error al guardar");
     } finally {
       setCargando(false);
     }
@@ -246,6 +280,76 @@ const Alumnos = () => {
                 <h5 className="mb-4 fw-bold text-uppercase" style={{ color: modoEdicion ? '#f59e0b' : 'var(--fc-turquesa)', letterSpacing: '1px' }}>
                   {modoEdicion ? <><i className="fas fa-edit me-2"></i> Editando Ficha de Alumno</> : 'Ficha de Registro'}
                 </h5>
+                <h6 className="fw-bold text-success mb-3 border-bottom pb-2 mt-4">
+                      <i className="fas fa-cash-register me-2"></i>5. Caja y Recepción de Pago
+                    </h6>
+                    <div className="card border-success border-opacity-25 shadow-sm mb-4">
+                      <div className="card-header bg-success bg-opacity-10 border-bottom-0 py-3 d-flex justify-content-between align-items-center">
+                        <div>
+                          <h6 className="mb-0 fw-bold text-success">¿Registrar pago inicial ahora?</h6>
+                          <small className="text-muted">Se enviará automáticamente a la sección de ingresos.</small>
+                        </div>
+                        <div className="form-check form-switch fs-4 mb-0">
+                          <input 
+                            className="form-check-input cursor-pointer" 
+                            type="checkbox" 
+                            role="switch" 
+                            name="registrarPagoInicial"
+                            checked={formData.registrarPagoInicial}
+                            onChange={(e) => setFormData({...formData, registrarPagoInicial: e.target.checked})}
+                          />
+                        </div>
+                      </div>
+                      
+                      {formData.registrarPagoInicial && (
+                        <div className="card-body bg-light animate__animated animate__fadeIn">
+                          <div className="row g-3">
+                            <div className="col-md-4">
+                              <label className="form-label fw-bold text-dark small">Monto Recibido (S/)</label>
+                              <div className="input-group shadow-sm">
+                                <span className="input-group-text bg-white border-success text-success fw-bold">S/</span>
+                                <input 
+                                  type="number" 
+                                  step="0.01"
+                                  className="form-control border-success" 
+                                  name="montoPago" 
+                                  placeholder="0.00"
+                                  value={formData.montoPago} 
+                                  onChange={handleChange} 
+                                  required={formData.registrarPagoInicial} 
+                                />
+                              </div>
+                            </div>
+                            <div className="col-md-4">
+                              <label className="form-label fw-bold text-muted small">Método de Pago</label>
+                              <select className="form-select shadow-sm" name="metodoPago" value={formData.metodoPago} onChange={handleChange}>
+                                <option value="Efectivo">💵 Efectivo</option>
+                                <option value="Yape">📱 Yape</option>
+                                <option value="Plin">📱 Plin</option>
+                                <option value="Transferencia">🏦 Transferencia</option>
+                              </select>
+                            </div>
+                            <div className="col-md-4">
+                              <label className="form-label fw-bold text-muted small">Concepto</label>
+                              <select 
+                                className="form-select shadow-sm fw-bold text-secondary" 
+                                name="conceptoPago" 
+                                value={formData.conceptoPago} 
+                                onChange={handleChange}
+                              >
+                                <option value="Matrícula y 1ra Mensualidad">🏷️ Matrícula y 1ra Mensual.</option>
+                                <option value="Solo Matrícula">📋 Solo Matrícula</option>
+                                <option value="Mensualidad">📅 Mensualidad</option>
+                                <option value="Indumentaria">👕 Indumentaria</option>
+                                <option value="Evento / Torneo">🏆 Evento / Torneo</option>
+                                <option value="Otros">⚙️ Otros</option>
+                              </select>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                
                 
                 <h6 className="fw-bold text-secondary mb-3 border-bottom pb-2">1. Datos Personales</h6>
                 <div className="row g-3 mb-4">
