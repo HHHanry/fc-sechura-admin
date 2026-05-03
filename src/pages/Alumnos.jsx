@@ -28,7 +28,7 @@ const Alumnos = () => {
   
   const [busqueda, setBusqueda] = useState('');
   const [filtroCategoria, setFiltroCategoria] = useState('Todas');
-  const [filtroDistrito, setFiltroDistrito] = useState('Todos'); // <-- NUEVO ESTADO
+  const [filtroDistrito, setFiltroDistrito] = useState('Todos');
   const [ordenarPor, setOrdenarPor] = useState('reciente');
   
   const [cargando, setCargando] = useState(false); 
@@ -40,8 +40,9 @@ const Alumnos = () => {
     fechaNacimiento: '', colegio: '', celular: '', distrito: 'Sechura', ciudad: 'Sechura',
     direccion: '', apoderado: '', foto: null,
     fechaInscripcion: hoy, 
-    vencimientoMensualidad: calcularProximoVencimiento(hoy),
-    registrarPagoInicial: false, // Switch para activar caja
+    // Por defecto vence el mismo día para que aparezca "debiendo"
+    vencimientoMensualidad: hoy,
+    registrarPagoInicial: false, 
     montoPago: '',
     metodoPago: 'Efectivo',
     conceptoPago: 'Inscripción y 1ra Mensualidad'
@@ -59,7 +60,6 @@ const Alumnos = () => {
     getAlumnos();
   }, []);
 
-  // === LÓGICA PARA EXTRAER DISTRITOS ÚNICOS PARA EL FILTRO ===
   const distritosExistentes = ['Todos', ...new Set(alumnos.map(a => a.distrito).filter(d => d))];
 
   const calcularEdad = (fechaNac) => {
@@ -77,8 +77,16 @@ const Alumnos = () => {
   const handleChange = (e) => {
     const { name, value } = e.target;
     let nuevosDatos = { ...formData, [name]: value };
+    
     if (name === 'fechaNacimiento') nuevosDatos.edad = calcularEdad(value);
-    if (name === 'fechaInscripcion' && !modoEdicion) nuevosDatos.vencimientoMensualidad = calcularProximoVencimiento(value);
+    
+    // Si cambia la fecha de inscripción, actualizamos el vencimiento dependiendo del switch
+    if (name === 'fechaInscripcion' && !modoEdicion) {
+      nuevosDatos.vencimientoMensualidad = formData.registrarPagoInicial 
+        ? calcularProximoVencimiento(value) 
+        : value;
+    }
+    
     setFormData(nuevosDatos);
   };
   
@@ -93,9 +101,9 @@ const Alumnos = () => {
   const iniciarEdicion = (alumno) => {
     setFormData({
       ...alumno,
-      ciudad: alumno.ciudad || 'Sechura', // Fallback por si no existía
+      ciudad: alumno.ciudad || 'Sechura', 
       fechaInscripcion: alumno.fechaInscripcion || hoy,
-      vencimientoMensualidad: alumno.vencimientoMensualidad || calcularProximoVencimiento(hoy)
+      vencimientoMensualidad: alumno.vencimientoMensualidad || hoy
     });
     setArchivoFoto(null); 
     setModoEdicion(true);
@@ -107,7 +115,10 @@ const Alumnos = () => {
     setFormData({ 
       nombre: '', apellido: '', edad: '', categoria: '6', dni: '', fechaNacimiento: '', 
       colegio: '', celular: '', distrito: 'Sechura', ciudad: 'Sechura', direccion: '', apoderado: '', foto: null,
-      fechaInscripcion: hoy, vencimientoMensualidad: calcularProximoVencimiento(hoy) 
+      fechaInscripcion: hoy, 
+      vencimientoMensualidad: hoy, // Resetea a que deba el mismo día
+      registrarPagoInicial: false, 
+      montoPago: '', metodoPago: 'Efectivo', conceptoPago: 'Inscripción y 1ra Mensualidad'
     });
     setArchivoFoto(null);
     setModoEdicion(false);
@@ -127,10 +138,8 @@ const Alumnos = () => {
     e.preventDefault();
     setCargando(true);
     try {
-      
       if (!modoEdicion) {
         const dniExiste = alumnos.some(a => a.dni === formData.dni);
-        
         if (dniExiste) {
           alert("¡Atención! Este DNI ya está registrado.");
           setCargando(false);
@@ -149,29 +158,23 @@ const Alumnos = () => {
       }
 
       if (modoEdicion) {
-        // ... (Tu código de edición se mantiene igual)
         const alumnoDoc = doc(db, 'alumnos', formData.id);
-        
         const datosAActualizar = { ...formData, foto: urlFotoFinal }; 
-        // Limpiamos datos de pago para no guardarlos en el perfil del alumno
         delete datosAActualizar.registrarPagoInicial; delete datosAActualizar.montoPago; delete datosAActualizar.metodoPago; delete datosAActualizar.conceptoPago;
         delete datosAActualizar.id; 
         
         await updateDoc(alumnoDoc, datosAActualizar);
         setAlumnos(alumnos.map(a => a.id === formData.id ? { ...datosAActualizar, id: formData.id } : a));
       } else {
-        // === REGISTRO DE ALUMNO NUEVO ===
         const qrGenerado = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${formData.dni}`;
         const nuevoAlumnoData = { ...formData, foto: urlFotoFinal, qr: qrGenerado, createdAt: new Date() };
         
-        // Limpiamos los datos temporales de pago antes de guardar al alumno
         delete nuevoAlumnoData.registrarPagoInicial; delete nuevoAlumnoData.montoPago; delete nuevoAlumnoData.metodoPago; delete nuevoAlumnoData.conceptoPago;
         delete nuevoAlumnoData.id; 
         
         const docRef = await addDoc(alumnosCollectionRef, nuevoAlumnoData);
         setAlumnos([...alumnos, { ...nuevoAlumnoData, id: docRef.id }]);
 
-        // === REGISTRO DE PAGO (CONEXIÓN CON CAJA) ===
         if (formData.registrarPagoInicial && formData.montoPago) {
           const pagosCollectionRef = collection(db, 'pagos');
           await addDoc(pagosCollectionRef, {
@@ -247,7 +250,7 @@ const Alumnos = () => {
       const termino = busqueda.toLowerCase();
       const coincideBusqueda = alumno.nombre.toLowerCase().includes(termino) || alumno.apellido.toLowerCase().includes(termino) || alumno.dni.includes(termino);
       const coincideCategoria = filtroCategoria === 'Todas' || alumno.categoria === filtroCategoria;
-      const coincideDistrito = filtroDistrito === 'Todos' || alumno.distrito === filtroDistrito; // <-- FILTRO APLICADO
+      const coincideDistrito = filtroDistrito === 'Todos' || alumno.distrito === filtroDistrito;
       return coincideBusqueda && coincideCategoria && coincideDistrito;
     })
     .sort((a, b) => {
@@ -287,7 +290,7 @@ const Alumnos = () => {
                       <div className="card-header bg-success bg-opacity-10 border-bottom-0 py-3 d-flex justify-content-between align-items-center">
                         <div>
                           <h6 className="mb-0 fw-bold text-success">¿Registrar pago inicial ahora?</h6>
-                          <small className="text-muted">Se enviará automáticamente a la sección de ingresos.</small>
+                          <small className="text-muted">Actualizará la fecha de vencimiento automáticamente.</small>
                         </div>
                         <div className="form-check form-switch fs-4 mb-0">
                           <input 
@@ -296,7 +299,15 @@ const Alumnos = () => {
                             role="switch" 
                             name="registrarPagoInicial"
                             checked={formData.registrarPagoInicial}
-                            onChange={(e) => setFormData({...formData, registrarPagoInicial: e.target.checked})}
+                            onChange={(e) => {
+                              const isChecked = e.target.checked;
+                              setFormData({
+                                ...formData, 
+                                registrarPagoInicial: isChecked,
+                                // Si se activa, calcula el próximo mes. Si no, vuelve a la fecha de inscripción.
+                                vencimientoMensualidad: isChecked ? calcularProximoVencimiento(formData.fechaInscripcion) : formData.fechaInscripcion
+                              });
+                            }}
                           />
                         </div>
                       </div>
@@ -457,7 +468,6 @@ const Alumnos = () => {
                     {['6', '8', '10', '12', '13', '14', '15', 'Juvenil'].map(c => <option key={c} value={c}>Cat. {c}</option>)}
                   </select>
                 </div>
-                {/* === NUEVO FILTRO DE DISTRITO === */}
                 <div className="col-6 col-md-3">
                   <div className="d-flex align-items-center bg-light px-2 rounded-3 shadow-sm">
                     <i className="fas fa-map-marker-alt text-muted me-2"></i>
@@ -513,7 +523,6 @@ const Alumnos = () => {
                                 </div>
                               </div>
                             </td>
-                            {/* === VISUALIZACIÓN DE UBICACIÓN === */}
                             <td>
                               <div className="fw-bold text-dark small">{alumno.distrito}</div>
                               <div className="text-muted" style={{fontSize: '0.65rem'}}>{alumno.ciudad}</div>
